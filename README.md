@@ -1,7 +1,7 @@
 # rule-service
 
 Decides whether a parked vehicle breaks a parking rule and turns breaches into violations and fines.
-Part of the Park & View platform (engineering contract: `smart-parking-e2e/docs/platform-standards.md`).
+Part of the Park & View platform (engineering contract: `parkview-e2e/docs/platform-standards.md`).
 
 ## Responsibilities
 
@@ -17,7 +17,7 @@ Part of the Park & View platform (engineering contract: `smart-parking-e2e/docs/
   every online payment is kept in an audit trail (`fine_actions`) and announced with `fine.voided` / `fine.paid`.
 * Freezes the evidence of every fine when it is issued (`fine_evidence`) and lets a driver (or an operator on the phone with a driver) ask a
   person to review a fine, a **dispute**: while it is open the fine cannot be paid, an operator with `fine:manage` upholds or voids the fine
-  with a written reason, everything is audited. Fines stay automatic; humans can always review the decision (ADR 0005 in smart-parking-e2e).
+  with a written reason, everything is audited. Fines stay automatic; humans can always review the decision (ADR 0005 in parkview-e2e).
 * Publishes every event through a transactional outbox (`outbox_events`), written in the transaction of the state change.
 
 ## Architecture position
@@ -161,7 +161,7 @@ Where to add things:
 
 * A new REST use case: the endpoint in the controller of its area (a new controller for a new area, URLs under `/api/v1/<area>`), the logic in a service of that area (a new `<Area>...Service` rather than growing one past about 200 lines), the response mapping in `mapper`.
 * A new fine command: a method in `FineManagementService` (lock, decide on the current state, mutate through a `Fine` method, audit row, event via `FineEvents`), a `FineActionType` value (and the value in the `fine_actions_action_check` constraint) and the endpoint in `FineManagementController`.
-* A new event: a record in `dto/event`, a routing key in `RabbitConfig`, a method in `FineEvents` (or `OutboxService.enqueue` directly) and its JSON schema in `contracts/events.json` of smart-parking-e2e. Never publish with `RabbitTemplate` directly: the outbox is the only way out.
+* A new event: a record in `dto/event`, a routing key in `RabbitConfig`, a method in `FineEvents` (or `OutboxService.enqueue` directly) and its JSON schema in `contracts/events.json` of parkview-e2e. Never publish with `RabbitTemplate` directly: the outbox is the only way out.
 * A new violation type: `ViolationType`, its grace and fine amount in `RuleEngineProperties`, its check in `ViolationEvaluator`.
 * Data of another service: a port and adapter in `client` named `<Thing>Directory`.
 
@@ -250,7 +250,7 @@ Interactive docs: `/swagger-ui.html` and `/v3/api-docs` when `DOCS_ENABLED=true`
 `application/problem+json`. Lists are plain JSON arrays, bounded by `?page=0&size=100` (max 500), total in `X-Total-Count`.
 
 Authorization uses the permissions in `app_metadata.permissions` (string[], one authority per permission, named exactly like it;
-ADR 0002 and `contracts/permissions.json` in smart-parking-e2e) plus the operator's site scope looked up through `OperatorSites` (`RuleAccessPolicy`); there is no `plates` and no `sites` claim, see "Plates of a driver".
+ADR 0002 and `contracts/permissions.json` in parkview-e2e) plus the operator's site scope looked up through `OperatorSites` (`RuleAccessPolicy`); there is no `plates` and no `sites` claim, see "Plates of a driver".
 A token WITHOUT the claim gets no permissions (a token with `role=admin` and no claim is not authorised; the role gives the role authority only, there is no switch and no default set per role);
 the permissions come from the access roles of the user (authentication-service), e.g. `violation:read`, `violation:resolve`, `fine:read`,
 `permit:read` and `permit:manage` for the staff bundle, `fine:manage` only where a role grants it. Read and write are
