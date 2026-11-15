@@ -1,4 +1,4 @@
-# rule-service
+# parkview-rule-service
 
 Decides whether a parked vehicle breaks a parking rule and turns breaches into violations and fines.
 Part of the Park & View platform (engineering contract: `parkview-e2e/docs/platform-standards.md`).
