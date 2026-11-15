@@ -1,5 +1,6 @@
 package com.parkview.ruleengine.client.jpa;
 
+import com.parkview.platform.domain.Place;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.parkview.ruleengine.domain.value.ParkingSpot;
 import com.parkview.ruleengine.geometry.PolygonGeometry;
@@ -247,10 +248,10 @@ class JpaDirectoriesTest {
         jdbc.update("insert into sessions.sessions (plate, zone_id, started_at) values ('ABC123', 'z1', '2026-10-12T09:00:00Z')");
         jdbc.update("insert into sessions.sessions (plate, zone_id, started_at, ended_at) values ('DEF456', 'z1', '2026-10-12T09:00:00Z', '2026-10-12T10:00:00Z')");
 
-        assertThat(sessions.startOfActiveSession("ABC123", "z1", "z1")).contains(Instant.parse("2026-10-12T09:00:00Z"));
-        assertThat(sessions.startOfActiveSession("ABC123", "z2", "z2")).isEmpty();
-        assertThat(sessions.startOfActiveSession("DEF456", "z1", "z1")).isEmpty();
-        assertThat(sessions.startOfActiveSession("NOPE11", "z1", "z1")).isEmpty();
+        assertThat(sessions.startOfActiveSession("ABC123", Place.of("z1", "z1"))).contains(Instant.parse("2026-10-12T09:00:00Z"));
+        assertThat(sessions.startOfActiveSession("ABC123", Place.of("z2", "z2"))).isEmpty();
+        assertThat(sessions.startOfActiveSession("DEF456", Place.of("z1", "z1"))).isEmpty();
+        assertThat(sessions.startOfActiveSession("NOPE11", Place.of("z1", "z1"))).isEmpty();
     }
 
     @Test
@@ -260,11 +261,11 @@ class JpaDirectoriesTest {
         jdbc.update("insert into sessions.sessions (plate, zone_id, started_at, ended_at) values ('DEF456', 'z1', '2026-10-12T09:00:00Z', '2026-10-12T10:00:00Z')");
         jdbc.update("insert into sessions.sessions (plate, zone_id, started_at, voided_at) values ('VOID11', 'z1', '2026-10-12T09:00:00Z', '2026-10-12T09:30:00Z')");
 
-        assertThat(sessions.idOfActiveSession("ABC123", "z1", "z1")).contains(active);
-        assertThat(sessions.idOfActiveSession("ABC123", "z2", "z2")).isEmpty();
-        assertThat(sessions.idOfActiveSession("DEF456", "z1", "z1")).isEmpty();
-        assertThat(sessions.idOfActiveSession("VOID11", "z1", "z1")).isEmpty();
-        assertThat(sessions.idOfActiveSession("ABC123", null, "z1")).isEmpty();
+        assertThat(sessions.idOfActiveSession("ABC123", Place.of("z1", "z1"))).contains(active);
+        assertThat(sessions.idOfActiveSession("ABC123", Place.of("z2", "z2"))).isEmpty();
+        assertThat(sessions.idOfActiveSession("DEF456", Place.of("z1", "z1"))).isEmpty();
+        assertThat(sessions.idOfActiveSession("VOID11", Place.of("z1", "z1"))).isEmpty();
+        assertThat(sessions.idOfActiveSession("ABC123", Place.of(null, "z1"))).isEmpty();
     }
 
     @Test
@@ -273,8 +274,8 @@ class JpaDirectoriesTest {
         jdbc.update("insert into sessions.sessions (plate, zone_id, started_at, voided_at) values ('BOTH11', 'z1', '2026-10-12T10:00:00Z', '2026-10-12T10:30:00Z')");
         jdbc.update("insert into sessions.sessions (plate, zone_id, started_at) values ('BOTH11', 'z1', '2026-10-12T08:00:00Z')");
 
-        assertThat(sessions.startOfActiveSession("VOID11", "z1", "z1")).isEmpty();
+        assertThat(sessions.startOfActiveSession("VOID11", Place.of("z1", "z1"))).isEmpty();
         // the newer session is voided, so the older active one counts
-        assertThat(sessions.startOfActiveSession("BOTH11", "z1", "z1")).contains(Instant.parse("2026-10-12T08:00:00Z"));
+        assertThat(sessions.startOfActiveSession("BOTH11", Place.of("z1", "z1"))).contains(Instant.parse("2026-10-12T08:00:00Z"));
     }
 }

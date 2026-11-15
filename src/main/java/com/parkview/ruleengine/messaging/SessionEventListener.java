@@ -1,9 +1,10 @@
 package com.parkview.ruleengine.messaging;
 
+import com.parkview.platform.domain.Place;
 import com.parkview.platform.security.Plates;
 import com.parkview.ruleengine.config.RabbitConfig;
 import com.parkview.ruleengine.dto.event.SessionEndedEvent;
-import com.parkview.ruleengine.service.violation.ViolationService;
+import com.parkview.ruleengine.service.violation.ViolationResolver;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,7 +21,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class SessionEventListener {
 
-    private final ViolationService violationService;
+    private final ViolationResolver violationResolver;
 
     @RabbitListener(queues = RabbitConfig.SESSION_ENDED_QUEUE)
     public void onSessionEnded(@Payload @Valid SessionEndedEvent event) {
@@ -28,15 +29,10 @@ public class SessionEventListener {
         if (plate == null) {
             return;
         }
-        String zoneId = blankToNull(event.zoneId());
-        String siteId = blankToNull(event.siteId());
-        int resolved = violationService.resolveEnded(plate, siteId, zoneId, event.endTime());
+        Place place = event.place();
+        int resolved = violationResolver.resolveEnded(plate, place, event.endTime());
         if (resolved > 0) {
-            log.debug("Session ended at site {} zone {}: {} violations resolved as LEFT", siteId, zoneId, resolved);
+            log.debug("Session ended at site {} zone {}: {} violations resolved as LEFT", place.siteId(), place.zoneId(), resolved);
         }
-    }
-
-    private static String blankToNull(String id) {
-        return id == null || id.isBlank() ? null : id.trim();
     }
 }

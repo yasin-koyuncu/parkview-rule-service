@@ -40,6 +40,11 @@
             <groupId>com.parkview.platform</groupId>
             <artifactId>parkview-outbox</artifactId>
         </dependency>
+        <!-- value types: Place, Money, Plate, Uuids, Enums, Strings and the plate/id constraints -->
+        <dependency>
+            <groupId>com.parkview.platform</groupId>
+            <artifactId>parkview-domain</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-amqp</artifactId>

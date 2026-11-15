@@ -1,11 +1,13 @@
 package com.parkview.ruleengine.service.violation;
 
+import com.parkview.platform.domain.Place;
+import com.parkview.platform.domain.Strings;
 import com.parkview.platform.security.Plates;
 import com.parkview.ruleengine.client.ZoneDirectory;
 import com.parkview.ruleengine.domain.PlatePermit;
 import com.parkview.ruleengine.dto.request.CreatePermitRequest;
+import com.parkview.ruleengine.engine.PermitDirectory;
 import com.parkview.ruleengine.repository.PlatePermitRepository;
-import com.parkview.ruleengine.util.ZoneIds;
 import com.parkview.platform.web.BusinessRuleException;
 import com.parkview.platform.web.ResourceNotFoundException;
 import jakarta.persistence.criteria.Predicate;
@@ -34,7 +36,7 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class PermitService {
+public class PermitService implements PermitDirectory {
 
     private final PlatePermitRepository repository;
     private final ZoneDirectory zones;
@@ -44,17 +46,18 @@ public class PermitService {
      * True when the plate holds a valid permit of every given type (case-insensitive) that covers the spot at {@code at}: a
      * permit for every site, for the site, or (a spot in a zone) for the zone. One query however many types are required.
      *
-     * @param zoneId the zone of the spot, null for a spot outside the zones of the site (a permit for a zone does not cover it)
+     * @param place the place of the spot; without a zone for a spot outside the zones of the site (a permit for a zone does not cover it)
      */
+    @Override
     @Transactional(readOnly = true)
-    public boolean holdsAll(String normalizedPlate, String siteId, String zoneId, Collection<String> permitTypes, Instant at) {
+    public boolean holdsAll(String normalizedPlate, Place place, Collection<String> permitTypes, Instant at) {
         Set<String> required = permitTypes.stream().map(t -> t.toLowerCase(Locale.ROOT)).collect(Collectors.toSet());
         if (required.isEmpty()) {
             return true;
         }
-        long held = zoneId != null
-                ? repository.countHeldTypes(normalizedPlate, required, siteId, zoneId, at)
-                : repository.countHeldTypesAtSite(normalizedPlate, required, siteId, at);
+        long held = place.hasZone()
+                ? repository.countHeldTypes(normalizedPlate, required, place.siteId(), place.zoneId(), at)
+                : repository.countHeldTypesAtSite(normalizedPlate, required, place.siteId(), at);
         return held == required.size();
     }
 
@@ -67,13 +70,13 @@ public class PermitService {
      */
     @Transactional(readOnly = true)
     public String siteOf(CreatePermitRequest request) {
-        String siteId = ZoneIds.normalize(request.siteId());
-        String zoneId = ZoneIds.normalize(request.zoneId());
-        if (zoneId == null) {
-            return siteId;
+        Place requested = Place.of(request.siteId(), request.zoneId());
+        if (!requested.hasZone()) {
+            return requested.siteId();
         }
+        String zoneId = requested.zoneId();
         String siteOfZone = zones.siteOf(zoneId).orElseThrow(() -> new ResourceNotFoundException("Zone", zoneId));
-        if (siteId != null && !siteId.equals(siteOfZone)) {
+        if (requested.hasSite() && !requested.siteId().equals(siteOfZone)) {
             throw BusinessRuleException.coded("zone.otherSite", "The zone belongs to another site");
         }
         return siteOfZone;
@@ -89,7 +92,7 @@ public class PermitService {
         if (request.validTo() != null && !request.validTo().isAfter(validFrom)) {
             throw BusinessRuleException.coded("permit.validToNotAfterValidFrom", "validTo must be after validFrom");
         }
-        String zoneId = ZoneIds.normalize(request.zoneId());
+        String zoneId = Strings.blankToNull(request.zoneId());
         String siteId = siteOf(request);
         PlatePermit permit = repository.save(PlatePermit.grant(
                 plate, request.permitType(), siteId, zoneId, validFrom, request.validTo(), createdBy));
@@ -106,17 +109,18 @@ public class PermitService {
      */
     @Transactional(readOnly = true)
     public Page<PlatePermit> search(String plate, String siteId, String zoneId, Collection<String> visibleSites, Pageable pageable) {
+        Place scope = Place.of(siteId, zoneId);
         Specification<PlatePermit> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             String normalized = Plates.normalizeOrNull(plate);
             if (normalized != null) {
                 predicates.add(cb.equal(root.get("plate"), normalized));
             }
-            if (siteId != null && !siteId.isBlank()) {
-                predicates.add(cb.equal(root.get("siteId"), siteId));
+            if (scope.hasSite()) {
+                predicates.add(cb.equal(root.get("siteId"), scope.siteId()));
             }
-            if (zoneId != null && !zoneId.isBlank()) {
-                predicates.add(cb.equal(root.get("zoneId"), zoneId));
+            if (scope.hasZone()) {
+                predicates.add(cb.equal(root.get("zoneId"), scope.zoneId()));
             }
             if (visibleSites != null) {
                 Predicate global = cb.isNull(root.get("siteId"));

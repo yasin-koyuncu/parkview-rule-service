@@ -1,5 +1,6 @@
 package com.parkview.ruleengine.service.violation;
 
+import com.parkview.platform.domain.Place;
 import com.parkview.ruleengine.client.ZoneDirectory;
 import com.parkview.ruleengine.domain.PlatePermit;
 import com.parkview.ruleengine.dto.request.CreatePermitRequest;
@@ -98,13 +99,13 @@ class PermitServiceTest {
         when(repository.countHeldTypes("ABC123", Set.of("resident", "loading"), "zone-1", "zone-1", NOW)).thenReturn(2L);
         when(repository.countHeldTypes("ABC123", Set.of("resident", "loading"), "zone-2", "zone-2", NOW)).thenReturn(1L);
 
-        assertThat(service.holdsAll("ABC123", "zone-1", "zone-1", List.of("Resident", "LOADING", "resident"), NOW)).isTrue();
-        assertThat(service.holdsAll("ABC123", "zone-2", "zone-2", List.of("Resident", "LOADING", "resident"), NOW)).isFalse();
+        assertThat(service.holdsAll("ABC123", Place.of("zone-1", "zone-1"), List.of("Resident", "LOADING", "resident"), NOW)).isTrue();
+        assertThat(service.holdsAll("ABC123", Place.of("zone-2", "zone-2"), List.of("Resident", "LOADING", "resident"), NOW)).isFalse();
     }
 
     @Test
     void holdsAllOfNothingIsTrueWithoutAQuery() {
-        assertThat(service.holdsAll("ABC123", "zone-1", "zone-1", List.of(), NOW)).isTrue();
+        assertThat(service.holdsAll("ABC123", Place.of("zone-1", "zone-1"), List.of(), NOW)).isTrue();
         verifyNoInteractions(repository);
     }
 }

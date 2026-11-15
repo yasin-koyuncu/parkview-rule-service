@@ -1,5 +1,6 @@
 package com.parkview.ruleengine.controller;
 
+import com.parkview.platform.domain.Strings;
 import com.parkview.ruleengine.domain.PlatePermit;
 import com.parkview.ruleengine.dto.request.CreatePermitRequest;
 import com.parkview.ruleengine.dto.response.PermitResponse;
@@ -8,7 +9,6 @@ import com.parkview.ruleengine.security.RuleAccessPolicy;
 import com.parkview.platform.security.servlet.AuthenticatedUser;
 import com.parkview.platform.security.servlet.CurrentUser;
 import com.parkview.ruleengine.service.violation.PermitService;
-import com.parkview.ruleengine.util.ZoneIds;
 import com.parkview.platform.web.PagedResponses;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -75,8 +75,8 @@ public class PermitController {
             @Parameter(description = "Zero-based page") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "Page size, at most 500") @RequestParam(defaultValue = "100") int size) {
         AuthenticatedUser user = currentUser.require();
-        String site = ZoneIds.normalize(siteId);
-        String zone = ZoneIds.normalize(zoneId);
+        String site = Strings.blankToNull(siteId);
+        String zone = Strings.blankToNull(zoneId);
         if (site != null) {
             accessPolicy.requireSite(user, site);
         }

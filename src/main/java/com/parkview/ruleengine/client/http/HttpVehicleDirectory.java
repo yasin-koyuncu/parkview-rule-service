@@ -6,6 +6,7 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.Expiry;
 import com.github.benmanes.caffeine.cache.Ticker;
 import com.parkview.platform.security.Plates;
+import com.parkview.platform.web.UpstreamCall;
 import com.parkview.ruleengine.client.VehicleDirectory;
 import com.parkview.ruleengine.config.LookupProperties;
 import com.parkview.ruleengine.domain.type.Fuel;
@@ -16,9 +17,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
 import org.springframework.boot.http.client.ClientHttpRequestFactorySettings;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
 import java.time.Duration;
@@ -37,6 +37,9 @@ import java.util.Optional;
 class HttpVehicleDirectory implements VehicleDirectory {
 
     static final String API_KEY_HEADER = "X-Internal-Api-Key";
+
+    /** No retry: a failed lookup means "cannot judge", the next observation asks again once the negative cache entry has expired. */
+    private static final UpstreamCall LOOKUP_SERVICE = UpstreamCall.to("lookup-service");
 
     private final RestClient client;
     private final EngineMetrics metrics;
@@ -96,32 +99,34 @@ class HttpVehicleDirectory implements VehicleDirectory {
         return cache.get(country + ':' + normalizedPlate, key -> fetch(normalizedPlate, country));
     }
 
+    /**
+     * An unknown vehicle (404) is an answer, not a failure; every other problem (connection, timeout, 5xx through
+     * {@link UpstreamCall}, another 4xx, an empty body) counts as a failed lookup and fails open.
+     */
     private Optional<VehicleInfo> fetch(String plate, String country) {
         try {
-            return client.get()
+            VehicleResponse body = LOOKUP_SERVICE.call(() -> client.get()
                     .uri("/internal/v1/vehicles/{plate}?country={country}", plate, country)
-                    .exchange((request, response) -> {
-                        HttpStatusCode status = response.getStatusCode();
-                        if (status.isSameCodeAs(HttpStatus.NOT_FOUND)) {
-                            log.debug("Vehicle {} is unknown to the registry", Plates.mask(plate));
-                            return Optional.<VehicleInfo>empty();
-                        }
-                        if (!status.is2xxSuccessful()) {
-                            throw new IllegalStateException("lookup-service answered " + status.value());
-                        }
-                        VehicleResponse body = response.bodyTo(VehicleResponse.class);
-                        if (body == null) {
-                            throw new IllegalStateException("lookup-service answered without a body");
-                        }
-                        return Optional.of(new VehicleInfo(
-                                VehicleClass.fromRegistry(body.vehicleType()).orElse(null),
-                                Fuel.fromRegistry(body.fuelType())));
-                    });
-        } catch (RuntimeException e) {
-            metrics.lookupFailed();
-            log.debug("Vehicle lookup for {} failed, the vehicle cannot be judged: {}", Plates.mask(plate), e.toString());
+                    .retrieve()
+                    .body(VehicleResponse.class));
+            if (body == null) {
+                return failed(plate, "lookup-service answered without a body");
+            }
+            return Optional.of(new VehicleInfo(
+                    VehicleClass.fromRegistry(body.vehicleType()).orElse(null),
+                    Fuel.fromRegistry(body.fuelType())));
+        } catch (HttpClientErrorException.NotFound e) {
+            log.debug("Vehicle {} is unknown to the registry", Plates.mask(plate));
             return Optional.empty();
+        } catch (RuntimeException e) {
+            return failed(plate, e.toString());
         }
+    }
+
+    private Optional<VehicleInfo> failed(String plate, String reason) {
+        metrics.lookupFailed();
+        log.debug("Vehicle lookup for {} failed, the vehicle cannot be judged: {}", Plates.mask(plate), reason);
+        return Optional.empty();
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

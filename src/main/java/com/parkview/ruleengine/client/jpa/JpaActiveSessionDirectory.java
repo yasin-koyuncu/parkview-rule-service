@@ -1,5 +1,6 @@
 package com.parkview.ruleengine.client.jpa;
 
+import com.parkview.platform.domain.Place;
 import com.parkview.ruleengine.client.ActiveSessionDirectory;
 import com.parkview.ruleengine.readmodel.SessionView;
 import com.parkview.ruleengine.readmodel.SessionViewRepository;
@@ -21,22 +22,22 @@ class JpaActiveSessionDirectory implements ActiveSessionDirectory {
      * site, so a spot without a zone never sees a session of another site.
      */
     @Override
-    public Optional<Instant> startOfActiveSession(String normalizedPlate, String siteId, String zoneId) {
-        return activeSession(normalizedPlate, siteId, zoneId).map(SessionView::getStartedAt);
+    public Optional<Instant> startOfActiveSession(String normalizedPlate, Place place) {
+        return activeSession(normalizedPlate, place).map(SessionView::getStartedAt);
     }
 
     @Override
-    public Optional<UUID> idOfActiveSession(String normalizedPlate, String siteId, String zoneId) {
-        return activeSession(normalizedPlate, siteId, zoneId).map(SessionView::getId);
+    public Optional<UUID> idOfActiveSession(String normalizedPlate, Place place) {
+        return activeSession(normalizedPlate, place).map(SessionView::getId);
     }
 
-    private Optional<SessionView> activeSession(String normalizedPlate, String siteId, String zoneId) {
-        if (siteId == null) {
+    private Optional<SessionView> activeSession(String normalizedPlate, Place place) {
+        if (!place.hasSite()) {
             return Optional.empty();
         }
-        return zoneId != null
+        return place.hasZone()
                 ? sessions.findFirstByPlateAndSiteIdAndZoneIdAndEndedAtIsNullAndVoidedAtIsNullOrderByStartedAtDesc(
-                        normalizedPlate, siteId, zoneId)
-                : sessions.findFirstByPlateAndSiteIdAndEndedAtIsNullAndVoidedAtIsNullOrderByStartedAtDesc(normalizedPlate, siteId);
+                        normalizedPlate, place.siteId(), place.zoneId())
+                : sessions.findFirstByPlateAndSiteIdAndEndedAtIsNullAndVoidedAtIsNullOrderByStartedAtDesc(normalizedPlate, place.siteId());
     }
 }

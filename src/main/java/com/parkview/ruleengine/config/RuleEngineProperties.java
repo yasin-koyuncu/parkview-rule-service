@@ -1,5 +1,6 @@
 package com.parkview.ruleengine.config;
 
+import com.parkview.platform.domain.Money;
 import com.parkview.ruleengine.domain.value.ParkingSpot;
 import com.parkview.ruleengine.domain.type.ViolationType;
 import jakarta.validation.constraints.DecimalMax;
@@ -14,10 +15,8 @@ import org.springframework.validation.annotation.Validated;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.Collections;
-import java.util.Currency;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -104,9 +103,8 @@ public record RuleEngineProperties(
     }
 
     private static String currencyCode(String currency) {
-        String code = currency == null ? "" : currency.trim().toUpperCase(Locale.ROOT);
         try {
-            return Currency.getInstance(code).getCurrencyCode();
+            return Money.requireCurrency(currency == null ? "" : currency);
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("parkview.rule-engine.fine-amounts: '" + currency + "' is not an ISO 4217 currency code", e);
         }

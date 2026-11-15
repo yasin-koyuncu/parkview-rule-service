@@ -3,6 +3,7 @@ package com.parkview.ruleengine.security;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.Ticker;
+import com.parkview.platform.domain.Uuids;
 import com.parkview.platform.security.OperatorSites;
 import com.parkview.platform.security.servlet.AccessProperties;
 import com.parkview.ruleengine.readmodel.UserSiteView;
@@ -41,7 +42,7 @@ public class ReadModelOperatorSites implements OperatorSites {
 
     @Override
     public Set<String> sitesOf(String userId) {
-        UUID id = parse(userId);
+        UUID id = Uuids.parseOrNull(userId);
         return id == null ? Set.of() : cache.get(id, this::load);
     }
 
@@ -49,13 +50,5 @@ public class ReadModelOperatorSites implements OperatorSites {
         return sites.findByUserId(userId).stream()
                 .map(UserSiteView::getSiteId)
                 .collect(Collectors.toUnmodifiableSet());
-    }
-
-    private static UUID parse(String userId) {
-        try {
-            return UUID.fromString(userId);
-        } catch (IllegalArgumentException | NullPointerException e) {
-            return null;
-        }
     }
 }

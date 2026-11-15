@@ -1,6 +1,7 @@
 package com.parkview.ruleengine.dto.event;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.parkview.platform.domain.Place;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -46,14 +47,15 @@ public record VehicleDetectedEvent(
         this(cameraId, zoneId, plate, vehiclePolygon, spotId, spotNumber, iou, confidence, timestamp, vehicleClass, viewId, null);
     }
 
+    /** Where the observation was made, as named by the event: blank ids are missing, the site may be missing (then the zone's is used). */
+    public Place place() {
+        return Place.of(siteId, zoneId);
+    }
+
     /** An observation must say where it was made: its site, or a zone (whose site is then used). */
     @JsonIgnore
     @AssertTrue(message = "{validation.siteOrZone}")
     public boolean isPlaced() {
-        return isSet(siteId) || isSet(zoneId);
-    }
-
-    private static boolean isSet(String id) {
-        return id != null && !id.isBlank();
+        return place().hasSite() || place().hasZone();
     }
 }

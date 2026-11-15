@@ -1,6 +1,7 @@
 package com.parkview.ruleengine.dto.event;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.parkview.platform.domain.Place;
 import jakarta.validation.constraints.AssertTrue;
 
 /**
@@ -23,10 +24,15 @@ public record MapUpdatedEvent(
         long timestamp
 ) {
 
+    /** The place whose caches are evicted, as named by the event: blank ids are missing, the site may be missing (then the zone's is used). */
+    public Place place() {
+        return Place.of(siteId, zoneId);
+    }
+
     /** The event must name the place whose caches are evicted. */
     @JsonIgnore
     @AssertTrue(message = "{validation.siteOrZone}")
     public boolean isPlaced() {
-        return (siteId != null && !siteId.isBlank()) || (zoneId != null && !zoneId.isBlank());
+        return place().hasSite() || place().hasZone();
     }
 }

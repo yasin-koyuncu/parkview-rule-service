@@ -1,5 +1,6 @@
 package com.parkview.ruleengine.domain;
 
+import com.parkview.platform.domain.Money;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
@@ -13,7 +14,6 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -103,7 +103,7 @@ public class Fine {
         fine.siteId = violation.getSiteId();
         fine.zoneId = violation.getZoneId();
         fine.reason = violation.getViolationType();
-        fine.amount = amount.setScale(2, RoundingMode.HALF_UP);
+        fine.amount = Money.scale(amount, currency);
         fine.currency = currency;
         fine.issuedAt = issuedAt;
         fine.paid = false;

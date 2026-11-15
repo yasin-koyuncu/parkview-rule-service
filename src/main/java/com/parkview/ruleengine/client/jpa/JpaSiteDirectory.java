@@ -1,5 +1,6 @@
 package com.parkview.ruleengine.client.jpa;
 
+import com.parkview.platform.domain.Money;
 import com.parkview.ruleengine.client.SiteDirectory;
 import com.parkview.ruleengine.domain.value.ZoneInfo;
 import com.parkview.ruleengine.readmodel.SiteView;
@@ -8,8 +9,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.util.Currency;
-import java.util.Locale;
 import java.util.Optional;
 
 @Slf4j
@@ -34,9 +33,8 @@ class JpaSiteDirectory implements SiteDirectory {
         if (raw == null || raw.isBlank()) {
             return Optional.empty();
         }
-        String code = raw.trim().toUpperCase(Locale.ROOT);
         try {
-            return Optional.of(Currency.getInstance(code).getCurrencyCode());
+            return Optional.of(Money.requireCurrency(raw));
         } catch (IllegalArgumentException e) {
             log.error("Site {} has the currency '{}' which is not an ISO 4217 code", siteId, raw);
             return Optional.empty();

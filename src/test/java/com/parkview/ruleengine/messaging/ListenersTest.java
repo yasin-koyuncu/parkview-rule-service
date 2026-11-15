@@ -1,6 +1,7 @@
 package com.parkview.ruleengine.messaging;
 
-import com.parkview.ruleengine.service.violation.ViolationService;
+import com.parkview.platform.domain.Place;
+import com.parkview.ruleengine.service.violation.ViolationResolver;
 import com.parkview.ruleengine.service.cache.RuleCacheService;
 import com.parkview.ruleengine.service.cache.SpotCacheService;
 import com.parkview.ruleengine.dto.event.MapUpdatedEvent;
@@ -182,14 +183,14 @@ class ListenersTest {
 
     @Test
     void sessionEndedResolvesTheViolationsOfThePlateInTheZoneUsingTheEndTime() {
-        ViolationService violations = mock(ViolationService.class);
+        ViolationResolver violations = mock(ViolationResolver.class);
         Instant ended = Instant.parse("2026-10-09T09:55:00Z");
 
         new SessionEventListener(violations).onSessionEnded(new SessionEndedEvent("abc 123", "z1", ended, Instant.parse("2026-10-09T10:00:00Z")));
         new SessionEventListener(violations).onSessionEnded(new SessionEndedEvent("ABC123", "z1", null, Instant.parse("2026-10-09T10:00:00Z")));
 
-        verify(violations).resolveEnded("ABC123", null, "z1", ended);
-        verify(violations).resolveEnded("ABC123", null, "z1", Instant.parse("2026-10-09T10:00:00Z"));
+        verify(violations).resolveEnded("ABC123", Place.of(null, "z1"), ended);
+        verify(violations).resolveEnded("ABC123", Place.of(null, "z1"), Instant.parse("2026-10-09T10:00:00Z"));
     }
 
     @Test
@@ -216,17 +217,17 @@ class ListenersTest {
     void mapUpdatedNamingOnlyAZoneEvictsTheSiteOfThatZoneAndTheCataloguePayloadIsParsed() throws Exception {
         SpotCacheService cache = mock(SpotCacheService.class);
         RuleCacheService rules = mock(RuleCacheService.class);
-        when(rules.siteIdOf("z1")).thenReturn("s1");
+        when(rules.resolve(Place.of(null, "z1"))).thenReturn(Place.of("s1", "z1"));
         MapUpdatedEvent event = mapper.readValue("""
                 {"zoneId":"z1","versionNumber":7,"spotCount":12,"changeReason":"rollback","timestamp":1760000000000,"x":1}
                 """, MapUpdatedEvent.class);
 
-        ViolationService violations = mock(ViolationService.class);
+        ViolationResolver violations = mock(ViolationResolver.class);
 
         new MapEventListener(cache, rules, violations).onMapUpdated(event);
 
         verify(cache).evict("s1");
-        verify(rules).evict("s1", "z1");
+        verify(rules).evict(Place.of("s1", "z1"));
         verify(violations).resolveOfRemovedSpots("s1");
         assertThat(event.versionNumber()).isEqualTo(7);
         assertThat(validator.validate(event)).isEmpty();
@@ -237,16 +238,17 @@ class ListenersTest {
     void mapUpdatedPerSiteEvictsThatSite() throws Exception {
         SpotCacheService cache = mock(SpotCacheService.class);
         RuleCacheService rules = mock(RuleCacheService.class);
+        when(rules.resolve(Place.of("s1", null))).thenReturn(Place.of("s1", null));
         MapUpdatedEvent event = mapper.readValue("""
                 {"siteId":"s1","zoneId":null,"versionNumber":3,"spotCount":4,"changeReason":"site rule","timestamp":1}
                 """, MapUpdatedEvent.class);
 
-        ViolationService violations = mock(ViolationService.class);
+        ViolationResolver violations = mock(ViolationResolver.class);
 
         new MapEventListener(cache, rules, violations).onMapUpdated(event);
 
         verify(cache).evict("s1");
-        verify(rules).evict("s1", null);
+        verify(rules).evict(Place.of("s1", null));
         verify(violations).resolveOfRemovedSpots("s1");
         assertThat(validator.validate(event)).isEmpty();
     }
@@ -266,11 +268,11 @@ class ListenersTest {
 
     @Test
     void sessionEndedAtASiteResolvesTheViolationsThere() {
-        ViolationService violations = mock(ViolationService.class);
+        ViolationResolver violations = mock(ViolationResolver.class);
         Instant ended = Instant.parse("2026-10-09T09:55:00Z");
 
         new SessionEventListener(violations).onSessionEnded(new SessionEndedEvent("ABC123", null, "s1", ended, null));
 
-        verify(violations).resolveEnded("ABC123", "s1", null, ended);
+        verify(violations).resolveEnded("ABC123", Place.of("s1", null), ended);
     }
 }

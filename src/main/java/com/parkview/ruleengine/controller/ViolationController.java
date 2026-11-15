@@ -6,7 +6,8 @@ import com.parkview.ruleengine.mapper.ViolationMapper;
 import com.parkview.ruleengine.security.RuleAccessPolicy;
 import com.parkview.platform.security.servlet.AuthenticatedUser;
 import com.parkview.platform.security.servlet.CurrentUser;
-import com.parkview.ruleengine.service.violation.ViolationService;
+import com.parkview.ruleengine.service.violation.ViolationQueryService;
+import com.parkview.ruleengine.service.violation.ViolationResolver;
 import com.parkview.platform.web.PagedResponses;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -36,7 +37,8 @@ public class ViolationController {
     /** The permission that makes the camera snapshot key of a violation visible; drivers never have it (ADR 0008). */
     private static final String EVIDENCE_PERMISSION = "violation:read";
 
-    private final ViolationService violationService;
+    private final ViolationQueryService violationQuery;
+    private final ViolationResolver violationResolver;
     private final CurrentUser currentUser;
     private final RuleAccessPolicy accessPolicy;
 
@@ -52,7 +54,7 @@ public class ViolationController {
             @Parameter(description = "Zero-based page") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "Page size, at most 500") @RequestParam(defaultValue = "100") int size) {
         accessPolicy.requireSite(currentUser.require(), siteId);
-        return PagedResponses.of(violationService
+        return PagedResponses.of(violationQuery
                 .activeBySite(siteId, PagedResponses.pageable(page, size, NEWEST_FIRST))
                 .map(v -> ViolationMapper.toResponse(v, true)));
     }
@@ -69,7 +71,7 @@ public class ViolationController {
             @Parameter(description = "Zero-based page") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "Page size, at most 500") @RequestParam(defaultValue = "100") int size) {
         accessPolicy.requireZone(currentUser.require(), zoneId);
-        return PagedResponses.of(violationService
+        return PagedResponses.of(violationQuery
                 .activeByZone(zoneId, PagedResponses.pageable(page, size, NEWEST_FIRST))
                 .map(v -> ViolationMapper.toResponse(v, true)));
     }
@@ -92,8 +94,8 @@ public class ViolationController {
         boolean withImagePath = currentUser.hasAuthority(EVIDENCE_PERMISSION);
         List<String> sites = accessPolicy.siteScopeOf(user).orElse(null);
         return PagedResponses.of((sites != null
-                ? violationService.byPlateInSites(normalized, sites, pageable)
-                : violationService.byPlate(normalized, pageable))
+                ? violationQuery.byPlateInSites(normalized, sites, pageable)
+                : violationQuery.byPlate(normalized, pageable))
                 .map(v -> ViolationMapper.toResponse(v, withImagePath)));
     }
 
@@ -106,8 +108,8 @@ public class ViolationController {
     @ApiResponse(responseCode = "404", description = "Unknown violation")
     @ApiResponse(responseCode = "409", description = "A fine has already been issued")
     public ResponseEntity<Void> resolve(@PathVariable UUID id) {
-        accessPolicy.requireSite(currentUser.require(), violationService.get(id).getSiteId());
-        violationService.resolveManually(id);
+        accessPolicy.requireSite(currentUser.require(), violationQuery.get(id).getSiteId());
+        violationResolver.resolveManually(id);
         return ResponseEntity.noContent().build();
     }
 }

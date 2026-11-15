@@ -1,9 +1,10 @@
 package com.parkview.ruleengine.messaging;
 
+import com.parkview.platform.domain.Place;
 import com.parkview.ruleengine.dto.event.MapUpdatedEvent;
 import com.parkview.ruleengine.service.cache.RuleCacheService;
 import com.parkview.ruleengine.service.cache.SpotCacheService;
-import com.parkview.ruleengine.service.violation.ViolationService;
+import com.parkview.ruleengine.service.violation.ViolationResolver;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -23,22 +24,17 @@ public class MapEventListener {
 
     private final SpotCacheService spotCache;
     private final RuleCacheService ruleCache;
-    private final ViolationService violations;
+    private final ViolationResolver violations;
 
     @RabbitListener(queues = "#{mapUpdatedInstanceQueue.name}")
     public void onMapUpdated(@Payload @Valid MapUpdatedEvent event) {
-        String zoneId = blankToNull(event.zoneId());
-        String siteId = blankToNull(event.siteId()) != null ? event.siteId().trim() : ruleCache.siteIdOf(zoneId);
-        if (siteId != null) {
-            spotCache.evict(siteId);
+        Place place = ruleCache.resolve(event.place());
+        if (place.hasSite()) {
+            spotCache.evict(place.siteId());
         }
-        ruleCache.evict(siteId, zoneId);
-        if (siteId != null) {
-            violations.resolveOfRemovedSpots(siteId);
+        ruleCache.evict(place);
+        if (place.hasSite()) {
+            violations.resolveOfRemovedSpots(place.siteId());
         }
-    }
-
-    private static String blankToNull(String id) {
-        return id == null || id.isBlank() ? null : id.trim();
     }
 }

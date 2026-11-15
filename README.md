@@ -86,7 +86,7 @@ Jobs (safe on several instances):
   for the whole TTL. An event published while an instance is down is not needed: its cache starts empty. A site without spots is cached for
   `spot-cache-negative-ttl-seconds` only.
   After the eviction the listener closes the active violations of the site whose spot is no longer in `mapping.v_parking_spots`
-  (`ViolationService.resolveOfRemovedSpots`, resolved as `LEFT`, `violation.resolved` is published): no foreign key to the spots of
+  (`ViolationResolver.resolveOfRemovedSpots`, resolved as `LEFT`, `violation.resolved` is published): no foreign key to the spots of
   another service takes them along (ADR 0010). A violation that already has a fine stays as it is. A violation opened from a stale
   cache in the instant before the eviction is closed by the stale sweep, since no detection can confirm it any more. A violation
   whose zone is deleted needs nothing: it belongs to its site and is still valid.
@@ -141,19 +141,19 @@ Package-by-layer under `com.parkview.ruleengine`; a call goes `controller`/`mess
 | Use cases | `service` | One class per use case area (below) |
 | Rules | `engine` | `ViolationEvaluator` (decision order), `RuleResolver`, `RuleSchedule`, `VehicleContext`; no I/O except the ports |
 | Domain | `domain`, `geometry` | Entities with their own state transitions (`Fine.markPaid`, `Fine.voidFine`, `Violation`) in `domain`; `domain/type` (enums), `domain/converter` (JPA converters), `domain/value` (read-only values such as `ParkingSpot`, `ZoneInfo`); `RuleEngineProperties.fineAmountFor(currency, type)` / `graceMinutesFor` hold the amount and grace rules. `geometry/PolygonGeometry` answers how much two polygons overlap (area, intersection, IoU, containment) with JTS, the standard Java geometry library |
-| Services by area | `service/fine` (fines, evidence, disputes: a dispute belongs to a fine and the two call each other), `service/violation` (violation lifecycle, detection, boundary and permit checks), `service/cache` | One package per area; `util` holds the small static helpers (`Plates`, `ZoneIds`, `ReasonTexts`); `client/jpa`, `client/http`, `client/holiday` hold the adapters behind the ports in `client/` |
+| Services by area | `service/fine` (fines, evidence, disputes: a dispute belongs to a fine and the two call each other), `service/violation` (violation lifecycle, detection, boundary and permit checks), `service/cache` | One package per area; `util` holds `ReasonTexts`; the value types (`Place`, `Money`, `Strings`, `Uuids`, `Enums`) come from `parkview-domain`; `client/jpa`, `client/http`, `client/holiday` hold the adapters behind the ports in `client/` |
 | Ports | `client` | `*Directory` interfaces and their adapters (`Jpa...` for tables of other services, `HttpVehicleDirectory`, `JollydayHolidayCalendar`) |
 | Mapping | `mapper` | Pure entity to DTO functions |
 
 Services:
 
 * `DetectionService`: one observation to violation state. `BoundaryService`: which spot. `SpotCacheService` / `RuleCacheService`: cached master data.
-* `ViolationService`: violation lifecycle (open, confirm, resolve). `ViolationJobs`: the two sweeps.
+* The violation lifecycle is four classes in `service/violation`: `ViolationOpener` (open and confirm), `ViolationResolver` (every way a violation ends: moved, left, stale, spot gone, operator), `ViolationQueryService` (reads for the controllers) and `ViolationEvents` (payload and routing key of `violation.created` / `violation.resolved`), plus `FineHistory` ("was this stay fined already", so the lifecycle does not touch `FineRepository`). `ViolationJobs`: the two sweeps. Where a spot, an event or a session is located the code passes a `Place(siteId, zoneId)` (no zone = the whole site, except in `FineHistory` and `PermitService.holdsAll`, where no zone means "outside the zones"); `RuleCacheService.resolve(place)` fills in the site of an event that names only its zone.
 * `FineIssuingService`: creates the fine of a due violation and freezes its evidence (inside the sweep transaction). `FineEvidenceService`: writes and reads the frozen evidence, builds the driver's explanation. `FineManagementService`: operator void and mark-paid. `FineSettlementService`: online payment. `FineQueryService`: reads, audit trail and the dispute state of fines. `FineEvents`: payload and routing key of the fine events.
 * `DisputeService`: open, withdraw and decide a dispute (the void of a decision goes through `FineManagementService.voidFine`). `DisputeCloser`: the one place that ends a dispute (status, audit row, `fine.dispute.decided`). `DisputeQueryService`: reads and the operator list.
-* The outbox (`OutboxService`, relay, clean-up, entity) is the `parkview-outbox` module of `parkview-platform`; this service only has `FineEvents` (payloads and routing keys of the fine events) and calls `OutboxService.enqueue` in `ViolationService`.
+* The outbox (`OutboxService`, relay, clean-up, entity) is the `parkview-outbox` module of `parkview-platform`; this service only has `FineEvents` (payloads and routing keys of the fine events) and calls `OutboxService.enqueue` in `ViolationEvents`.
 * `RetentionJob`, `RuleRetention`, `PostgresRetentionLock` (package `service.retention`): the data-retention job, its batch work and its advisory lock, see "Data retention".
-* `PermitService`: permits (the engine question `holdsAll` and operator CRUD). `Plates`, `ZoneIds`: normal forms of ids from requests.
+* `PermitService`: permits (the engine question `holdsAll` and operator CRUD). The engine reaches permits and rules through its own ports `PermitDirectory` and `RuleSource` (implemented by `PermitService` and `RuleCacheService`), so `engine` does not depend on `service`.
 
 Every fine command locks the row (`select ... for update`), writes its `fine_actions` row and its outbox event in the same transaction; the relay publishes the event after commit (see "Transactional outbox").
 
@@ -237,7 +237,7 @@ Used only when a decision needs it (spot type `ev`, or an applicable rule with a
 is unknown), at most once per observation. `GET {LOOKUP_SERVICE_URL}/internal/v1/vehicles/{plate}?country=<zones.country>`
 with `X-Internal-Api-Key` (`LOOKUP_INTERNAL_API_KEY`, the key of lookup-service); only `vehicleType` and `fuelType` are read (never owner data). Found vehicles are cached
 `parkview.lookup.cache-ttl-minutes`; "not found" and failed lookups for `negative-cache-ttl-seconds`.
-Explicit connect/read timeouts, no retries. `parkview.rule-engine.vehicle-lookup-enabled=false` switches it off.
+Explicit connect/read timeouts, no retries. The call goes through the platform `UpstreamCall`: a connection failure, a timeout or a 5xx is a failed lookup (counted, fails open), 404 is an unknown vehicle (not a failure). `parkview.rule-engine.vehicle-lookup-enabled=false` switches it off.
 
 ### Metrics
 
@@ -285,7 +285,7 @@ and do not imply reading, so a token that holds only the write permission is ref
 
 Fine JSON (read API and the response of the two commands; online payment goes through payment-service): `id, plate, siteId, zoneId, reason, amount, currency,
 issuedAt, paid, imagePath, paidAt, voided, voidedAt, disputed, disputeStatus`. `reason` is the stored lower-case value (`no_parking | overstay | wrong_permit | boundary_exceeded | wrong_vehicle_type`),
-`amount` a number (scale 2) next to its `currency` (ISO 4217, upper case), `issuedAt`, `paidAt` and `voidedAt` ISO-8601 instants; `zoneId`, `imagePath`, `paidAt` and `voidedAt` may be null. `disputed` is true while a dispute is open, `disputeStatus` is the status of the latest dispute (`open | upheld | voided | withdrawn`) or null. The owner's `userId`, the void reason and the actors are never returned here. The lists are served from
+`amount` a number (scaled to the fraction digits of its currency by `Money.scale`: 2 for SEK, EUR, NOK, DKK and USD) next to its `currency` (ISO 4217, upper case), `issuedAt`, `paidAt` and `voidedAt` ISO-8601 instants; `zoneId`, `imagePath`, `paidAt` and `voidedAt` may be null. `disputed` is true while a dispute is open, `disputeStatus` is the status of the latest dispute (`open | upheld | voided | withdrawn`) or null. The owner's `userId`, the void reason and the actors are never returned here. The lists are served from
 the indexes `fines_plate_issued_idx`, `fines_site_issued_idx` and `fines_zone_issued_idx`. These endpoints replace the frontend's direct read of the `fines` table, so the row level
 security policy that lets every signed-in user read all fines can be dropped.
 
@@ -344,7 +344,7 @@ HTTP statuses are not affected and stay English.
   `dispute.alreadyDecided` (409); `fine.voidPaid`, `fine.payVoided`, `fine.payUnderReview` (409); `violation.fineAlreadyIssued` (409);
   `permit.plateEmpty`, `permit.validToNotAfterValidFrom` (422); `notFound.fine`, `notFound.dispute`, `notFound.dispute-of-fine`, `notFound.permit`,
   `notFound.violation` (404).
-* DTO validation: the literal `message` of `@Pattern` is `{validation.<rule>}` (`plateCharacters`, `disputeOutcome`, `paidMethod`, `disputeStatusFilter`) and
+* DTO validation: the plate of `CreatePermitRequest` is checked by the library `@PlateNumber` (raw text up to 16 characters, normalised form 2 to 8 letters or digits; `"---"` is invalid) with the service message `{validation.plateCharacters}`. The literal `message` of `@Pattern` is `{validation.<rule>}` (`plateCharacters`, `disputeOutcome`, `paidMethod`, `disputeStatusFilter`) and
   `@NotBlank`/`@Size` use the bundles too, so a field error is Swedish or English, never the language of the validator library. `ErrorMessagesConfig` of parkview-web wires
   the bundles into the validator.
 * Adding a message: new code in the exception, one line in `errors.properties` and one in `errors_sv.properties` (same placeholders). Internal guards
@@ -458,7 +458,7 @@ Read only: the catalogue views of other services (see "Data read from other serv
 * One fine per violation, enforced by the database: `fine_evidence.violation_id` is unique, `spot_violations.fine_id` has the foreign key `spot_violations_fine_fk -> fines` and the partial unique
   index `spot_violations_fine_uq (fine_id) where fine_id is not null`, and the check `spot_violations_fine_paired_check` says that `fine_id` and `fine_issued_at` are set together
   (`Violation.markFined` sets both). The claim with `FOR UPDATE SKIP LOCKED` already makes a second fine unlikely; should one be attempted anyway (`ViolationJobs`), its transaction
-  fails on the constraint, rolls back as a whole (no second fine, evidence or event) and is logged as "fined already" instead of as an error.
+  fails on the constraint, rolls back as a whole (no second fine, evidence or event) and, when the violation then carries a fine, is logged as "fined already" instead of as an error; a constraint failure of any other kind (for example `fines_amount_check`) is logged as an ERROR and retried by the next sweep.
 * `fine_actions(id, fine_id -> fines on delete restrict, at, actor_id null, action void|mark_paid|paid_online|dispute_opened|dispute_upheld|dispute_voided|dispute_withdrawn|payment_needs_review, reason null, details jsonb)` with the index
   `fine_actions_fine_at_idx (fine_id, at desc)`.
 * `fine_evidence(fine_id pk -> fines, plate, site_id, site_address, zone_id, zone_address, spot_id, spot_number, violation_type, violation_id unique, rule_summary, grace_minutes, violation_detected_at, grace_expired_at, issued_at,

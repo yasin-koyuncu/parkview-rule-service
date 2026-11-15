@@ -77,10 +77,6 @@ public class FineManagementController {
 
     /** The audit trail records who acted: the token subject, which Supabase always issues as a UUID. */
     private static UUID actorOf(AuthenticatedUser user) {
-        try {
-            return UUID.fromString(user.userId());
-        } catch (IllegalArgumentException | NullPointerException e) {
-            throw new AccessDeniedException("Token subject is not a user id");
-        }
+        return user.userUuid().orElseThrow(() -> new AccessDeniedException("Token subject is not a user id"));
     }
 }

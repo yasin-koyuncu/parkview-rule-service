@@ -9,7 +9,7 @@ import com.parkview.ruleengine.repository.ViolationRepository;
 import com.parkview.ruleengine.service.TestFixtures;
 import com.parkview.ruleengine.service.fine.FineIssuingService;
 import com.parkview.ruleengine.service.violation.ViolationJobs;
-import com.parkview.ruleengine.service.violation.ViolationService;
+import com.parkview.ruleengine.service.violation.ViolationResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -234,7 +234,7 @@ class ViolationRepositoryTest {
             // only GOOD01 can be fined: the site of the others has no currency
             return attempted.getPlate().equals("GOOD01") ? Optional.of(mock(Fine.class)) : Optional.<Fine>empty();
         });
-        ViolationJobs jobs = new ViolationJobs(violations, mock(ViolationService.class), fineIssuing, TestFixtures.properties(),
+        ViolationJobs jobs = new ViolationJobs(violations, mock(ViolationResolver.class), fineIssuing, TestFixtures.properties(),
                 Clock.fixed(NOW, ZoneOffset.UTC), new TransactionTemplate(transactionManager));
 
         jobs.issueDueFines();

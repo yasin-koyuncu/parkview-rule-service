@@ -1,6 +1,7 @@
 package com.parkview.ruleengine.dto.event;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.parkview.platform.domain.Place;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 
@@ -35,10 +36,15 @@ public record SessionEndedEvent(
         return endedAt != null ? endedAt : occurredAt;
     }
 
+    /** Where the session was, as named by the event: blank ids are missing, the site may be missing (then the zone's is used). */
+    public Place place() {
+        return Place.of(siteId, zoneId);
+    }
+
     /** The session must say where it was: its site, or a zone (whose site is then used). */
     @JsonIgnore
     @AssertTrue(message = "{validation.siteOrZone}")
     public boolean isPlaced() {
-        return (siteId != null && !siteId.isBlank()) || (zoneId != null && !zoneId.isBlank());
+        return place().hasSite() || place().hasZone();
     }
 }

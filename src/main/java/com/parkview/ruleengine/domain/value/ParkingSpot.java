@@ -1,5 +1,6 @@
 package com.parkview.ruleengine.domain.value;
 
+import com.parkview.platform.domain.Place;
 import com.parkview.ruleengine.geometry.Polygon;
 
 import java.util.UUID;
@@ -34,6 +35,11 @@ public record ParkingSpot(
     public static final String TYPE_DISABLED = "disabled";
     public static final String TYPE_TIMED = "timed";
     public static final String TYPE_LOADING = "loading";
+
+    /** Where the spot is: its site, narrowed to its zone when it has one. */
+    public Place place() {
+        return Place.of(siteId, zoneId);
+    }
 
     public boolean isNoParking() {
         return TYPE_NO_PARKING.equals(type);

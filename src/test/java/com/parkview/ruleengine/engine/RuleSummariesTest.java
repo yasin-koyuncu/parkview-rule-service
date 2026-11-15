@@ -1,5 +1,6 @@
 package com.parkview.ruleengine.engine;
 
+import com.parkview.platform.domain.Place;
 import com.parkview.ruleengine.client.ActiveSessionDirectory;
 import com.parkview.ruleengine.client.HolidayCalendar;
 import com.parkview.ruleengine.client.VehicleDirectory;
@@ -11,8 +12,6 @@ import com.parkview.ruleengine.domain.value.ZoneInfo;
 import com.parkview.ruleengine.domain.value.ZoneRule;
 import com.parkview.ruleengine.geometry.Point;
 import com.parkview.ruleengine.geometry.Polygon;
-import com.parkview.ruleengine.service.violation.PermitService;
-import com.parkview.ruleengine.service.cache.RuleCacheService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,8 +35,8 @@ class RuleSummariesTest {
     private static final String ZONE_ID = "zone-1";
     private static final String PLATE = "ABC123";
 
-    private final RuleCacheService ruleCache = mock(RuleCacheService.class);
-    private final PermitService permits = mock(PermitService.class);
+    private final RuleSource ruleCache = mock(RuleSource.class);
+    private final PermitDirectory permits = mock(PermitDirectory.class);
     private final ActiveSessionDirectory sessions = mock(ActiveSessionDirectory.class);
     private final VehicleDirectory vehicles = mock(VehicleDirectory.class);
     private final HolidayCalendar holidays = mock(HolidayCalendar.class);
@@ -49,10 +48,10 @@ class RuleSummariesTest {
         RuleEngineProperties properties = new RuleEngineProperties(0.85, 0.90, 0.5, 10, 30, 5, 5, 10,
                 java.util.Map.of(), 60000, 20, 15, 120, 60000, 10, 5, 15, 600, 6, 60, true, java.time.Duration.ofMinutes(15));
         evaluator = new ViolationEvaluator(ruleCache, new RuleResolver(holidays, metrics), permits, sessions, vehicles, properties, metrics);
-        when(ruleCache.rulesOf(ZONE_ID, ZONE_ID)).thenReturn(List.of());
+        when(ruleCache.rulesOf(Place.of(ZONE_ID, ZONE_ID))).thenReturn(List.of());
         when(vehicles.lookup(anyString(), anyString())).thenReturn(Optional.empty());
-        when(sessions.startOfActiveSession(anyString(), anyString(), anyString())).thenReturn(Optional.empty());
-        when(permits.holdsAll(anyString(), anyString(), anyString(), any(), any())).thenReturn(true);
+        when(sessions.startOfActiveSession(anyString(), any(Place.class))).thenReturn(Optional.empty());
+        when(permits.holdsAll(anyString(), any(Place.class), any(), any())).thenReturn(true);
     }
 
     private static ParkingSpot spot(String type, String permitType, int maxMinutes) {
@@ -61,7 +60,7 @@ class RuleSummariesTest {
     }
 
     private Finding assess(ParkingSpot spot, boolean insideLines, int zoneMax, ZoneRule... rules) {
-        when(ruleCache.rulesOf(ZONE_ID, ZONE_ID)).thenReturn(List.of(rules));
+        when(ruleCache.rulesOf(Place.of(ZONE_ID, ZONE_ID))).thenReturn(List.of(rules));
         ZoneInfo zone = new ZoneInfo("Storgatan 1", zoneMax, "SE", ZoneInfo.DEFAULT_TIMEZONE);
         return evaluator.assess(new Observation(zone, spot, insideLines, PLATE, VehicleClass.CAR, NOW)).orElseThrow();
     }
@@ -113,7 +112,7 @@ class RuleSummariesTest {
 
     @Test
     void aMissingPermitNamesWhatTheSpotAndTheRuleDemand() {
-        when(permits.holdsAll(anyString(), anyString(), anyString(), any(), any())).thenReturn(false);
+        when(permits.holdsAll(anyString(), any(Place.class), any(), any())).thenReturn(false);
 
         Finding spotOnly = assess(spot("permit", "Resident", 0), true, 0);
         Finding both = assess(spot("permit", "resident", 0), true, 0, Rules.rule().permit("disabled").build());
@@ -126,7 +125,7 @@ class RuleSummariesTest {
 
     @Test
     void anOverstayNamesTheLimitAndWhereItCameFrom() {
-        when(sessions.startOfActiveSession(PLATE, ZONE_ID, ZONE_ID)).thenReturn(Optional.of(NOW.minusSeconds(3 * 3600)));
+        when(sessions.startOfActiveSession(PLATE, Place.of(ZONE_ID, ZONE_ID))).thenReturn(Optional.of(NOW.minusSeconds(3 * 3600)));
 
         Finding byRule = assess(spot("paid", null, 0), true, 240, Rules.rule().maxMinutes(60).build());
         Finding bySpot = assess(spot("timed", null, 90), true, 240);

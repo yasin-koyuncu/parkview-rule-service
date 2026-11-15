@@ -1,5 +1,6 @@
 package com.parkview.ruleengine.service.violation;
 
+import com.parkview.platform.domain.Place;
 import com.parkview.platform.security.Plates;
 import com.parkview.ruleengine.domain.type.ResolutionReason;
 import com.parkview.ruleengine.domain.type.VehicleClass;
@@ -48,7 +49,8 @@ public class DetectionService {
     private final RuleCacheService ruleCache;
     private final BoundaryService boundaryService;
     private final ViolationEvaluator evaluator;
-    private final ViolationService violationService;
+    private final ViolationOpener violationOpener;
+    private final ViolationResolver violationResolver;
     private final RuleEngineProperties properties;
     private final Clock clock;
 
@@ -56,18 +58,19 @@ public class DetectionService {
         Instant now = clock.instant();
         Instant observedAt = observedAt(event, now);
         Duration age = Duration.between(observedAt, now);
-        String zoneId = blankToNull(event.zoneId());
+        Place named = event.place();
         if (age.compareTo(properties.observationMaxAge()) > 0) {
             // no plate in the log: it is personal data
-            log.debug("Observation at site {} zone {} from camera {} is {} s old: dropped", event.siteId(), zoneId, event.cameraId(),
-                    age.toSeconds());
+            log.debug("Observation at site {} zone {} from camera {} is {} s old: dropped", event.siteId(), named.zoneId(),
+                    event.cameraId(), age.toSeconds());
             return;
         }
-        String siteId = blankToNull(event.siteId()) != null ? event.siteId().trim() : ruleCache.siteIdOf(zoneId);
-        if (siteId == null) {
+        Place place = ruleCache.resolve(named);
+        if (!place.hasSite()) {
             log.warn("Observation from camera {} names no known site or zone: ignored", event.cameraId());
             return;
         }
+        String siteId = place.siteId();
         String plate = Plates.normalizeOrNull(event.plate());
         if (plate == null) {
             log.debug("Observation at site {} without a plate: ignored", siteId);
@@ -90,25 +93,21 @@ public class DetectionService {
 
         Optional<BoundaryCheckResult> fit = boundaryService.check(vehicle, spots);
         if (fit.isEmpty()) {
-            violationService.resolveOthers(plate, siteId, zoneId, null, null, ResolutionReason.LEFT);
+            violationResolver.resolveOthers(plate, place, null, null, ResolutionReason.LEFT);
             return;
         }
         ParkingSpot spot = fit.get().spot();
-        Observation observation = new Observation(ruleCache.placeOf(spot.siteId(), spot.zoneId()), spot, fit.get().insideLines(), plate,
+        Observation observation = new Observation(ruleCache.placeOf(spot.place()), spot, fit.get().insideLines(), plate,
                 VehicleClass.fromDetector(event.vehicleClass()).orElse(null), observedAt);
 
         Optional<Finding> finding = evaluator.assess(observation);
         if (finding.isEmpty()) {
-            violationService.resolveOthers(plate, siteId, zoneId, null, null, ResolutionReason.CORRECTED);
+            violationResolver.resolveOthers(plate, place, null, null, ResolutionReason.CORRECTED);
         } else {
             ViolationType type = finding.get().type();
-            violationService.confirm(spot, type, plate, event.cameraId(), finding.get().ruleSummary(), observedAt);
-            violationService.resolveOthers(plate, siteId, zoneId, spot.id(), type, ResolutionReason.CORRECTED);
+            violationOpener.confirm(spot, type, plate, event.cameraId(), finding.get().ruleSummary(), observedAt);
+            violationResolver.resolveOthers(plate, place, spot.id(), type, ResolutionReason.CORRECTED);
         }
-    }
-
-    private static String blankToNull(String id) {
-        return id == null || id.isBlank() ? null : id.trim();
     }
 
     /** The event time, never later than {@code now} (a camera clock that runs ahead); an event without a time counts as seen now. */

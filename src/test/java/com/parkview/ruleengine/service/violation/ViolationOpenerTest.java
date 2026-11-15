@@ -6,19 +6,15 @@ import com.parkview.ruleengine.client.SiteDirectory;
 import com.parkview.ruleengine.client.ZoneDirectory;
 import com.parkview.ruleengine.config.RabbitConfig;
 import com.parkview.ruleengine.domain.Violation;
-import com.parkview.ruleengine.domain.type.ResolutionReason;
 import com.parkview.ruleengine.domain.type.ViolationType;
 import com.parkview.ruleengine.domain.value.ParkingSpot;
 import com.parkview.ruleengine.dto.event.ViolationCreatedEvent;
-import com.parkview.ruleengine.dto.event.ViolationResolvedEvent;
 import com.parkview.ruleengine.engine.EngineMetrics;
 import com.parkview.ruleengine.repository.FineRepository;
 import com.parkview.ruleengine.repository.ViolationRepository;
 import com.parkview.ruleengine.service.TestFixtures;
 import com.parkview.ruleengine.service.TestTransactions;
 import com.parkview.platform.outbox.OutboxService;
-import com.parkview.platform.web.ConflictException;
-import com.parkview.platform.web.ResourceNotFoundException;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -49,7 +45,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-class ViolationServiceTest {
+class ViolationOpenerTest {
 
     private static final Instant NOW = Instant.parse("2026-10-09T10:00:00Z");
 
@@ -61,12 +57,12 @@ class ViolationServiceTest {
     private final ActiveSessionDirectory sessions = mock(ActiveSessionDirectory.class);
     private final OutboxService events = mock(OutboxService.class);
     private final SimpleMeterRegistry registry = new SimpleMeterRegistry();
-    private ViolationService service;
+    private ViolationOpener opener;
 
     @BeforeEach
     void setUp() {
-        service = new ViolationService(violations, fines, owners, sessions, zones, sites, events, TestFixtures.properties(),
-                new EngineMetrics(registry), Clock.fixed(NOW, ZoneOffset.UTC), TestTransactions.template());
+        opener = new ViolationOpener(violations, owners, sessions, new ViolationEvents(events, zones, sites), new FineHistory(fines),
+                TestFixtures.properties(), new EngineMetrics(registry), Clock.fixed(NOW, ZoneOffset.UTC), TestTransactions.template());
         when(owners.ownerOf(anyString())).thenReturn(Optional.empty());
         when(zones.addressOf(anyString())).thenReturn(Optional.empty());
         when(violations.saveAndFlush(any(Violation.class))).thenAnswer(inv -> {
@@ -85,7 +81,7 @@ class ViolationServiceTest {
         when(zones.addressOf(ZONE)).thenReturn(Optional.of("Storgatan 1"));
         when(violations.findActive(PLATE, spot.id(), ViolationType.WRONG_PERMIT)).thenReturn(Optional.empty());
 
-        service.confirm(spot, ViolationType.WRONG_PERMIT, PLATE, "cam-1");
+        opener.confirm(spot, ViolationType.WRONG_PERMIT, PLATE, "cam-1");
 
         ArgumentCaptor<Violation> saved = ArgumentCaptor.forClass(Violation.class);
         verify(violations).saveAndFlush(saved.capture());
@@ -94,7 +90,7 @@ class ViolationServiceTest {
         assertThat(saved.getValue().getUserId()).isEqualTo(owner);
 
         ArgumentCaptor<Object> payload = ArgumentCaptor.forClass(Object.class);
-        verify(events).enqueue(eq(ViolationService.AGGREGATE_VIOLATION), any(UUID.class), eq(RabbitConfig.VIOLATION_EXCHANGE),
+        verify(events).enqueue(eq(ViolationEvents.AGGREGATE_VIOLATION), any(UUID.class), eq(RabbitConfig.VIOLATION_EXCHANGE),
                 eq("violation.created"), payload.capture());
         ViolationCreatedEvent event = (ViolationCreatedEvent) payload.getValue();
         assertThat(event.plate()).isEqualTo(PLATE);
@@ -115,16 +111,16 @@ class ViolationServiceTest {
     void aViolationOpenedWhileASessionIsActiveCarriesItsIdOnTheRowAndTheEvent() {
         ParkingSpot spot = TestFixtures.spot("permit", "resident", 0, 45);
         UUID sessionId = UUID.randomUUID();
-        when(sessions.idOfActiveSession(PLATE, spot.siteId(), spot.zoneId())).thenReturn(Optional.of(sessionId));
+        when(sessions.idOfActiveSession(PLATE, spot.place())).thenReturn(Optional.of(sessionId));
         when(violations.findActive(PLATE, spot.id(), ViolationType.WRONG_PERMIT)).thenReturn(Optional.empty());
 
-        service.confirm(spot, ViolationType.WRONG_PERMIT, PLATE, "cam-1");
+        opener.confirm(spot, ViolationType.WRONG_PERMIT, PLATE, "cam-1");
 
         ArgumentCaptor<Violation> saved = ArgumentCaptor.forClass(Violation.class);
         verify(violations).saveAndFlush(saved.capture());
         assertThat(saved.getValue().getSessionId()).isEqualTo(sessionId);
         ArgumentCaptor<Object> payload = ArgumentCaptor.forClass(Object.class);
-        verify(events).enqueue(eq(ViolationService.AGGREGATE_VIOLATION), any(UUID.class), eq(RabbitConfig.VIOLATION_EXCHANGE),
+        verify(events).enqueue(eq(ViolationEvents.AGGREGATE_VIOLATION), any(UUID.class), eq(RabbitConfig.VIOLATION_EXCHANGE),
                 eq("violation.created"), payload.capture());
         assertThat(((ViolationCreatedEvent) payload.getValue()).sessionId()).isEqualTo(sessionId);
     }
@@ -135,7 +131,7 @@ class ViolationServiceTest {
         when(violations.findActive(anyString(), any(), any())).thenReturn(Optional.empty());
 
         for (ViolationType type : ViolationType.values()) {
-            service.confirm(spot, type, PLATE, "cam-1");
+            opener.confirm(spot, type, PLATE, "cam-1");
         }
 
         ArgumentCaptor<Violation> saved = ArgumentCaptor.forClass(Violation.class);
@@ -155,9 +151,9 @@ class ViolationServiceTest {
         ParkingSpot spot = TestFixtures.spot("paid", null, 7, 45);
         when(violations.findActive(anyString(), any(), any())).thenReturn(Optional.empty());
 
-        service.confirm(spot, ViolationType.BOUNDARY_EXCEEDED, PLATE, "cam-1");
-        service.confirm(spot, ViolationType.WRONG_PERMIT, PLATE, "cam-1");
-        service.confirm(spot, ViolationType.NO_PARKING, PLATE, "cam-1");
+        opener.confirm(spot, ViolationType.BOUNDARY_EXCEEDED, PLATE, "cam-1");
+        opener.confirm(spot, ViolationType.WRONG_PERMIT, PLATE, "cam-1");
+        opener.confirm(spot, ViolationType.NO_PARKING, PLATE, "cam-1");
 
         ArgumentCaptor<Violation> saved = ArgumentCaptor.forClass(Violation.class);
         verify(violations, org.mockito.Mockito.times(3)).saveAndFlush(saved.capture());
@@ -170,7 +166,7 @@ class ViolationServiceTest {
         ParkingSpot spot = TestFixtures.spot("ev", null, 0, 0);
         when(violations.findActive(anyString(), any(), any())).thenReturn(Optional.empty());
 
-        service.confirm(spot, ViolationType.WRONG_VEHICLE_TYPE, PLATE, "cam-1");
+        opener.confirm(spot, ViolationType.WRONG_VEHICLE_TYPE, PLATE, "cam-1");
 
         assertThat(registry.counter("ruleengine.violations.created", "type", "WRONG_VEHICLE_TYPE").count()).isEqualTo(1.0);
         assertThat(registry.counter("ruleengine.violations.created", "type", "OVERSTAY").count()).isZero();
@@ -182,7 +178,7 @@ class ViolationServiceTest {
         Violation old = TestFixtures.violation(ViolationType.OVERSTAY, NOW.minusSeconds(120), NOW.plusSeconds(600));
         when(violations.findActive(PLATE, spot.id(), ViolationType.OVERSTAY)).thenReturn(Optional.of(old));
 
-        service.confirm(spot, ViolationType.OVERSTAY, PLATE, "cam-1");
+        opener.confirm(spot, ViolationType.OVERSTAY, PLATE, "cam-1");
 
         assertThat(registry.counter("ruleengine.violations.created", "type", "OVERSTAY").count()).isZero();
         verify(violations).touch(old.getId(), NOW);
@@ -194,7 +190,7 @@ class ViolationServiceTest {
         Violation fresh = TestFixtures.violation(ViolationType.WRONG_PERMIT, NOW.minusSeconds(5), NOW.plusSeconds(600));
         when(violations.findActive(PLATE, spot.id(), ViolationType.WRONG_PERMIT)).thenReturn(Optional.of(fresh));
 
-        service.confirm(spot, ViolationType.WRONG_PERMIT, PLATE, "cam-1");
+        opener.confirm(spot, ViolationType.WRONG_PERMIT, PLATE, "cam-1");
 
         verify(violations, never()).touch(any(), any());
         verify(violations, never()).saveAndFlush(any());
@@ -202,7 +198,7 @@ class ViolationServiceTest {
         Violation old = TestFixtures.violation(ViolationType.WRONG_PERMIT, NOW.minusSeconds(120), NOW.plusSeconds(600));
         when(violations.findActive(PLATE, spot.id(), ViolationType.WRONG_PERMIT)).thenReturn(Optional.of(old));
 
-        service.confirm(spot, ViolationType.WRONG_PERMIT, PLATE, "cam-1");
+        opener.confirm(spot, ViolationType.WRONG_PERMIT, PLATE, "cam-1");
 
         verify(violations).touch(old.getId(), NOW);
         verify(violations, never()).saveAndFlush(any());
@@ -217,7 +213,7 @@ class ViolationServiceTest {
         when(violations.findRecentlyFinedIds(eq(PLATE), eq(spot.id()), eq(ViolationType.WRONG_PERMIT),
                 eq(NOW.minus(Duration.ofMinutes(15))), any(Pageable.class))).thenReturn(List.of(finedId));
 
-        service.confirm(spot, ViolationType.WRONG_PERMIT, PLATE, "cam-1");
+        opener.confirm(spot, ViolationType.WRONG_PERMIT, PLATE, "cam-1");
 
         verify(violations).touch(finedId, NOW);
         verify(violations, never()).saveAndFlush(any());
@@ -233,7 +229,7 @@ class ViolationServiceTest {
                 .thenReturn(Optional.of(winner));
         when(violations.saveAndFlush(any(Violation.class))).thenThrow(new DataIntegrityViolationException("duplicate key"));
 
-        service.confirm(spot, ViolationType.WRONG_PERMIT, PLATE, "cam-1");
+        opener.confirm(spot, ViolationType.WRONG_PERMIT, PLATE, "cam-1");
 
         verifyNoInteractions(events);
     }
@@ -244,139 +240,9 @@ class ViolationServiceTest {
         when(violations.findActive(PLATE, spot.id(), ViolationType.WRONG_PERMIT)).thenReturn(Optional.empty());
         when(violations.saveAndFlush(any(Violation.class))).thenThrow(new DataIntegrityViolationException("fk violation"));
 
-        assertThatThrownBy(() -> service.confirm(spot, ViolationType.WRONG_PERMIT, PLATE, "cam-1"))
+        assertThatThrownBy(() -> opener.confirm(spot, ViolationType.WRONG_PERMIT, PLATE, "cam-1"))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
-
-    @Test
-    void resolveOthersResolvesEverythingExceptTheKeptViolation() {
-        UUID keepSpot = UUID.randomUUID();
-        Violation keep = violationAt(keepSpot, ViolationType.WRONG_PERMIT);
-        Violation otherType = violationAt(keepSpot, ViolationType.BOUNDARY_EXCEEDED);
-        Violation otherSpot = violationAt(UUID.randomUUID(), ViolationType.WRONG_PERMIT);
-        when(violations.findActiveByPlateAndSiteAndZone(PLATE, ZONE, ZONE)).thenReturn(List.of(keep, otherType, otherSpot));
-        when(violations.resolveIfActive(any(), any(), any())).thenReturn(1);
-
-        service.resolveOthers(PLATE, ZONE, ZONE, keepSpot, ViolationType.WRONG_PERMIT, ResolutionReason.CORRECTED);
-
-        verify(violations, never()).resolveIfActive(eq(keep.getId()), any(), any());
-        verify(violations).resolveIfActive(otherType.getId(), ResolutionReason.CORRECTED, NOW);
-        verify(violations).resolveIfActive(otherSpot.getId(), ResolutionReason.CORRECTED, NOW);
-
-        ArgumentCaptor<Object> payload = ArgumentCaptor.forClass(Object.class);
-        verify(events, org.mockito.Mockito.times(2)).enqueue(eq(ViolationService.AGGREGATE_VIOLATION), any(UUID.class),
-                eq(RabbitConfig.VIOLATION_EXCHANGE), eq("violation.resolved"), payload.capture());
-        ViolationResolvedEvent event = (ViolationResolvedEvent) payload.getAllValues().get(0);
-        assertThat(event.reason()).isEqualTo(ResolutionReason.CORRECTED);
-        assertThat(event.plate()).isEqualTo(PLATE);
-        assertThat(event.occurredAt()).isEqualTo(NOW);
-    }
-
-    @Test
-    void aTypeChangeOnTheSameSpotResolvesTheOldViolationAsCorrected() {
-        UUID spotId = UUID.randomUUID();
-        Violation boundary = violationAt(spotId, ViolationType.BOUNDARY_EXCEEDED);
-        Violation overstay = violationAt(spotId, ViolationType.OVERSTAY);
-        when(violations.findActiveByPlateAndSiteAndZone(PLATE, ZONE, ZONE)).thenReturn(List.of(boundary, overstay));
-        when(violations.resolveIfActive(any(), any(), any())).thenReturn(1);
-
-        service.resolveOthers(PLATE, ZONE, ZONE, spotId, ViolationType.OVERSTAY, ResolutionReason.CORRECTED);
-
-        verify(violations).resolveIfActive(boundary.getId(), ResolutionReason.CORRECTED, NOW);
-        verify(violations, never()).resolveIfActive(eq(overstay.getId()), any(), any());
-    }
-
-    @Test
-    void resolveOthersWithoutKeepResolvesAll() {
-        Violation a = violationAt(UUID.randomUUID(), ViolationType.WRONG_PERMIT);
-        when(violations.findActiveByPlateAndSiteAndZone(PLATE, ZONE, ZONE)).thenReturn(List.of(a));
-        when(violations.resolveIfActive(any(), any(), any())).thenReturn(1);
-
-        service.resolveOthers(PLATE, ZONE, ZONE, null, null, ResolutionReason.LEFT);
-
-        verify(violations).resolveIfActive(a.getId(), ResolutionReason.LEFT, NOW);
-    }
-
-    @Test
-    void noEventWhenSomeoneElseResolvedItFirst() {
-        Violation a = violationAt(UUID.randomUUID(), ViolationType.WRONG_PERMIT);
-        when(violations.findActiveByPlateAndSiteAndZone(PLATE, ZONE, ZONE)).thenReturn(List.of(a));
-        when(violations.resolveIfActive(any(), any(), any())).thenReturn(0);
-
-        service.resolveOthers(PLATE, ZONE, ZONE, null, null, ResolutionReason.LEFT);
-
-        verifyNoInteractions(events);
-    }
-
-    @Test
-    void staleViolationsAreResolvedAsLeft() {
-        Violation stale = violationAt(UUID.randomUUID(), ViolationType.BOUNDARY_EXCEEDED);
-        when(violations.findStale(eq(NOW.minus(Duration.ofMinutes(15))), any(Pageable.class))).thenReturn(List.of(stale));
-        when(violations.resolveIfActive(any(), any(), any())).thenReturn(1);
-
-        assertThat(service.resolveStale()).isEqualTo(1);
-
-        verify(violations).resolveIfActive(stale.getId(), ResolutionReason.LEFT, NOW);
-    }
-
-    @Test
-    void violationsOfSpotsThatNoLongerExistAreResolvedAsLeft() {
-        Violation orphan = violationAt(UUID.randomUUID(), ViolationType.WRONG_PERMIT);
-        when(violations.findActiveOfRemovedSpots(ZONE)).thenReturn(List.of(orphan));
-        when(violations.resolveIfActive(any(), any(), any())).thenReturn(1);
-
-        assertThat(service.resolveOfRemovedSpots(ZONE)).isEqualTo(1);
-
-        verify(violations).resolveIfActive(orphan.getId(), ResolutionReason.LEFT, NOW);
-    }
-
-    @Test
-    void manualResolveClosesAnOpenViolationAndPublishes() {
-        Violation open = violationAt(UUID.randomUUID(), ViolationType.WRONG_PERMIT);
-        when(violations.findById(open.getId())).thenReturn(Optional.of(open));
-        when(violations.resolveIfActive(open.getId(), ResolutionReason.MANUAL, NOW)).thenReturn(1);
-
-        service.resolveManually(open.getId());
-
-        verify(events).enqueue(eq(ViolationService.AGGREGATE_VIOLATION), any(UUID.class), eq(RabbitConfig.VIOLATION_EXCHANGE),
-                eq("violation.resolved"), any(ViolationResolvedEvent.class));
-    }
-
-    @Test
-    void manualResolveOfAnAlreadyResolvedViolationIsANoOp() {
-        Violation resolved = violationAt(UUID.randomUUID(), ViolationType.WRONG_PERMIT);
-        ReflectionTestUtils.setField(resolved, "resolvedAt", NOW.minusSeconds(60));
-        when(violations.findById(resolved.getId())).thenReturn(Optional.of(resolved));
-        when(violations.resolveIfActive(any(), any(), any())).thenReturn(0);
-
-        service.resolveManually(resolved.getId());
-
-        verifyNoInteractions(events);
-    }
-
-    @Test
-    void manualResolveOfAFinedViolationIsAConflict() {
-        Violation fined = violationAt(UUID.randomUUID(), ViolationType.WRONG_PERMIT);
-        fined.markFined(UUID.randomUUID(), NOW.minusSeconds(60));
-        when(violations.findById(fined.getId())).thenReturn(Optional.of(fined));
-
-        assertThatThrownBy(() -> service.resolveManually(fined.getId())).isInstanceOf(ConflictException.class);
-    }
-
-    @Test
-    void manualResolveOfAnUnknownViolationIsNotFound() {
-        UUID id = UUID.randomUUID();
-        when(violations.findById(id)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> service.resolveManually(id)).isInstanceOf(ResourceNotFoundException.class);
-    }
-
-    private static Violation violationAt(UUID spotId, ViolationType type) {
-        Violation v = TestFixtures.violation(type, NOW.minusSeconds(300), NOW.plusSeconds(300));
-        ReflectionTestUtils.setField(v, "spotId", spotId);
-        return v;
-    }
-
 
     @Test
     void anOldObservationStartsItsGraceAtThePointItWasMadeNotAtProcessingTime() {
@@ -384,7 +250,7 @@ class ViolationServiceTest {
         Instant seen = NOW.minus(Duration.ofMinutes(8));
         when(violations.findActive(PLATE, spot.id(), ViolationType.WRONG_PERMIT)).thenReturn(Optional.empty());
 
-        service.confirm(spot, ViolationType.WRONG_PERMIT, PLATE, "cam-1", null, seen);
+        opener.confirm(spot, ViolationType.WRONG_PERMIT, PLATE, "cam-1", null, seen);
 
         ArgumentCaptor<Violation> saved = ArgumentCaptor.forClass(Violation.class);
         verify(violations).saveAndFlush(saved.capture());
@@ -400,7 +266,7 @@ class ViolationServiceTest {
         when(violations.findActive(PLATE, spot.id(), ViolationType.WRONG_PERMIT)).thenReturn(Optional.of(active));
         Instant seen = NOW.minus(Duration.ofMinutes(5));
 
-        service.confirm(spot, ViolationType.WRONG_PERMIT, PLATE, "cam-1", null, seen);
+        opener.confirm(spot, ViolationType.WRONG_PERMIT, PLATE, "cam-1", null, seen);
 
         verify(violations).touch(active.getId(), seen);
         verify(violations, never()).touch(active.getId(), NOW);
@@ -413,7 +279,7 @@ class ViolationServiceTest {
         when(fines.existsByPlateAndZoneIdAndReasonAndIssuedAtGreaterThanEqual(PLATE, ZONE, ViolationType.WRONG_PERMIT,
                 NOW.minus(Duration.ofHours(6)))).thenReturn(true);
 
-        service.confirm(spot, ViolationType.WRONG_PERMIT, PLATE, "cam-1", null, NOW);
+        opener.confirm(spot, ViolationType.WRONG_PERMIT, PLATE, "cam-1", null, NOW);
 
         verify(violations, never()).saveAndFlush(any());
         verifyNoInteractions(events);
@@ -424,73 +290,8 @@ class ViolationServiceTest {
         ParkingSpot spot = TestFixtures.spot("permit", "resident", null, null);
         when(violations.findActive(PLATE, spot.id(), ViolationType.WRONG_PERMIT)).thenReturn(Optional.empty());
 
-        service.confirm(spot, ViolationType.WRONG_PERMIT, PLATE, "cam-1", null, NOW);
+        opener.confirm(spot, ViolationType.WRONG_PERMIT, PLATE, "cam-1", null, NOW);
 
         verify(violations).saveAndFlush(any(Violation.class));
-    }
-
-    @Test
-    void aSessionEndResolvesTheOpenViolationsOfThePlateInTheZoneAsLeft() {
-        Violation open = violationAt(UUID.randomUUID(), ViolationType.WRONG_PERMIT);
-        ReflectionTestUtils.setField(open, "lastSeenAt", NOW.minusSeconds(240));
-        when(violations.findActiveByPlateAndSiteAndZone(PLATE, ZONE, ZONE)).thenReturn(List.of(open));
-        when(violations.resolveIfActive(open.getId(), ResolutionReason.LEFT, NOW)).thenReturn(1);
-
-        assertThat(service.resolveEnded(PLATE, ZONE, ZONE, NOW.minusSeconds(60))).isEqualTo(1);
-
-        ArgumentCaptor<Object> payload = ArgumentCaptor.forClass(Object.class);
-        verify(events).enqueue(eq(ViolationService.AGGREGATE_VIOLATION), eq(open.getId()), eq(RabbitConfig.VIOLATION_EXCHANGE),
-                eq("violation.resolved"), payload.capture());
-        assertThat(((ViolationResolvedEvent) payload.getValue()).reason()).isEqualTo(ResolutionReason.LEFT);
-    }
-
-    @Test
-    void aRedeliveredSessionEndResolvesNothingAndPublishesNothing() {
-        // the first delivery resolved it: the repository no longer lists it as active, and a race loses the atomic update
-        when(violations.findActiveByPlateAndSiteAndZone(PLATE, ZONE, ZONE)).thenReturn(List.of());
-        assertThat(service.resolveEnded(PLATE, ZONE, ZONE, NOW)).isZero();
-
-        Violation raced = violationAt(UUID.randomUUID(), ViolationType.WRONG_PERMIT);
-        ReflectionTestUtils.setField(raced, "lastSeenAt", NOW.minusSeconds(240));
-        when(violations.findActiveByPlateAndSiteAndZone(PLATE, ZONE, ZONE)).thenReturn(List.of(raced));
-        when(violations.resolveIfActive(any(), any(), any())).thenReturn(0);
-        assertThat(service.resolveEnded(PLATE, ZONE, ZONE, NOW)).isZero();
-
-        verifyNoInteractions(events);
-    }
-
-    @Test
-    void aViolationConfirmedAfterTheSessionEndedMeansTheVehicleIsStillThereAndStaysOpen() {
-        Violation stillThere = violationAt(UUID.randomUUID(), ViolationType.WRONG_PERMIT);
-        ReflectionTestUtils.setField(stillThere, "lastSeenAt", NOW.minusSeconds(10));
-        when(violations.findActiveByPlateAndSiteAndZone(PLATE, ZONE, ZONE)).thenReturn(List.of(stillThere));
-
-        assertThat(service.resolveEnded(PLATE, ZONE, ZONE, NOW.minusSeconds(120))).isZero();
-
-        verify(violations, never()).resolveIfActive(any(), any(), any());
-    }
-
-    @Test
-    void aSessionEndWithoutATimeResolvesEveryOpenViolation() {
-        Violation open = violationAt(UUID.randomUUID(), ViolationType.WRONG_PERMIT);
-        when(violations.findActiveByPlateAndSiteAndZone(PLATE, ZONE, ZONE)).thenReturn(List.of(open));
-        when(violations.resolveIfActive(any(), any(), any())).thenReturn(1);
-
-        assertThat(service.resolveEnded(PLATE, ZONE, ZONE, null)).isEqualTo(1);
-    }
-
-    @Test
-    void aFineIssuedBetweenTheCheckAndTheUpdateIsAConflictNotASuccess() {
-        Violation open = violationAt(UUID.randomUUID(), ViolationType.WRONG_PERMIT);
-        Violation fined = violationAt(UUID.randomUUID(), ViolationType.WRONG_PERMIT);
-        ReflectionTestUtils.setField(fined, "id", open.getId());
-        fined.markFined(UUID.randomUUID(), NOW.minusSeconds(1));
-        // first read: still open; the atomic update changes nothing; second read: the sweep fined it meanwhile
-        when(violations.findById(open.getId())).thenReturn(Optional.of(open)).thenReturn(Optional.of(fined));
-        when(violations.resolveIfActive(open.getId(), ResolutionReason.MANUAL, NOW)).thenReturn(0);
-
-        assertThatThrownBy(() -> service.resolveManually(open.getId())).isInstanceOf(ConflictException.class);
-
-        verifyNoInteractions(events);
     }
 }

@@ -1,11 +1,13 @@
 package com.parkview.ruleengine.service.cache;
 
+import com.parkview.platform.domain.Place;
 import com.parkview.ruleengine.client.SiteDirectory;
 import com.parkview.ruleengine.client.ZoneDirectory;
 import com.parkview.ruleengine.client.ZoneRuleDirectory;
 import com.parkview.ruleengine.config.RuleEngineProperties;
 import com.parkview.ruleengine.domain.value.ZoneInfo;
 import com.parkview.ruleengine.domain.value.ZoneRule;
+import com.parkview.ruleengine.engine.RuleSource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -32,7 +34,7 @@ import java.util.function.Supplier;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class RuleCacheService {
+public class RuleCacheService implements RuleSource {
 
     private final ZoneRuleDirectory ruleDirectory;
     private final ZoneDirectory zoneDirectory;
@@ -47,11 +49,14 @@ public class RuleCacheService {
     private final Map<String, Entry<Optional<String>>> siteOfZone = new ConcurrentHashMap<>();
 
     /**
-     * The rules that apply at a spot: the zone rules of {@code zoneId} (none when it is null) and the site rules of
-     * {@code siteId}, in no particular order.
+     * The rules that apply at a spot: the zone rules of its zone (none without a zone) and the site rules of its site, in no
+     * particular order.
      */
-    public List<ZoneRule> rulesOf(String siteId, String zoneId) {
-        remember(siteId, zoneId);
+    @Override
+    public List<ZoneRule> rulesOf(Place place) {
+        String siteId = place.siteId();
+        String zoneId = place.zoneId();
+        remember(place);
         List<ZoneRule> ofZone = zoneId == null ? List.of() : cached(zoneRules, zoneId, () -> {
             List<ZoneRule> loaded = ruleDirectory.enabledRulesOf(zoneId);
             log.debug("Loaded {} rules for zone {}", loaded.size(), zoneId);
@@ -75,8 +80,8 @@ public class RuleCacheService {
     }
 
     /** The parameters that apply at a spot: the zone's when it has one, otherwise the site's. */
-    public ZoneInfo placeOf(String siteId, String zoneId) {
-        return zoneId != null ? zoneOf(zoneId) : siteOf(siteId);
+    public ZoneInfo placeOf(Place place) {
+        return place.hasZone() ? zoneOf(place.zoneId()) : siteOf(place.siteId());
     }
 
     public ZoneInfo zoneOf(String zoneId) {
@@ -99,11 +104,21 @@ public class RuleCacheService {
     }
 
     /**
+     * The place with its site filled in from its zone when only the zone is named (a producer that predates sites); a place that
+     * names a site, or neither, is returned as it is, and a zone that is not known leaves the site missing.
+     */
+    public Place resolve(Place place) {
+        return place.hasSite() ? place : Place.of(siteIdOf(place.zoneId()), place.zoneId());
+    }
+
+    /**
      * Forgets the site rules and master data of the site, and everything cached for its zones (and for {@code zoneId}, when
      * set): the next observation reloads them. Called for {@code map.updated}, which a change of a site rule, a zone rule or
      * a tariff publishes too.
      */
-    public void evict(String siteId, String zoneId) {
+    public void evict(Place place) {
+        String siteId = place.siteId();
+        String zoneId = place.zoneId();
         if (siteId != null) {
             siteRules.remove(siteId);
             sites.remove(siteId);
@@ -123,9 +138,9 @@ public class RuleCacheService {
     }
 
     /** Notes which site a zone belongs to, so that evicting the site also evicts what is cached for the zone. */
-    private void remember(String siteId, String zoneId) {
-        if (siteId != null && zoneId != null) {
-            siteOfZone.putIfAbsent(zoneId, new Entry<>(Optional.of(siteId), clock.instant().plus(properties.ruleCacheTtl())));
+    private void remember(Place place) {
+        if (place.hasSite() && place.hasZone()) {
+            siteOfZone.putIfAbsent(place.zoneId(), new Entry<>(Optional.of(place.siteId()), clock.instant().plus(properties.ruleCacheTtl())));
         }
     }
 

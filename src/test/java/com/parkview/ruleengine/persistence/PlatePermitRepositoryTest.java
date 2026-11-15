@@ -1,5 +1,6 @@
 package com.parkview.ruleengine.persistence;
 
+import com.parkview.platform.domain.Place;
 import com.parkview.ruleengine.domain.PlatePermit;
 import com.parkview.ruleengine.dto.request.CreatePermitRequest;
 import com.parkview.ruleengine.repository.PlatePermitRepository;
@@ -142,8 +143,8 @@ class PlatePermitRepositoryTest {
     void permitServiceDecidesAtTheGivenInstant() {
         service.grant(new CreatePermitRequest("ABC123", "resident", "z1", NOW.plusSeconds(3600), null), "op");
 
-        assertThat(service.holdsAll("ABC123", "z1", "z1", List.of("resident"), NOW)).isFalse();
-        assertThat(service.holdsAll("ABC123", "z1", "z1", List.of("resident"), NOW.plusSeconds(3600))).isTrue();
+        assertThat(service.holdsAll("ABC123", Place.of("z1", "z1"), List.of("resident"), NOW)).isFalse();
+        assertThat(service.holdsAll("ABC123", Place.of("z1", "z1"), List.of("resident"), NOW.plusSeconds(3600))).isTrue();
     }
 
     @Test
@@ -154,8 +155,8 @@ class PlatePermitRepositoryTest {
 
         assertThat(repository.countHeldTypes("ABC123", List.of("resident", "disabled"), "z1", "z1", NOW)).isEqualTo(1);
         assertThat(repository.countHeldTypes("ABC123", List.of("resident", "disabled"), "z2", "z2", NOW)).isEqualTo(2);
-        assertThat(service.holdsAll("ABC123", "z1", "z1", List.of("Resident", "disabled"), NOW)).isFalse();
-        assertThat(service.holdsAll("ABC123", "z2", "z2", List.of("Resident", "DISABLED"), NOW)).isTrue();
-        assertThat(service.holdsAll("ABC123", "z2", "z2", List.of("resident", "RESIDENT"), NOW)).isTrue();
+        assertThat(service.holdsAll("ABC123", Place.of("z1", "z1"), List.of("Resident", "disabled"), NOW)).isFalse();
+        assertThat(service.holdsAll("ABC123", Place.of("z2", "z2"), List.of("Resident", "DISABLED"), NOW)).isTrue();
+        assertThat(service.holdsAll("ABC123", Place.of("z2", "z2"), List.of("resident", "RESIDENT"), NOW)).isTrue();
     }
 }

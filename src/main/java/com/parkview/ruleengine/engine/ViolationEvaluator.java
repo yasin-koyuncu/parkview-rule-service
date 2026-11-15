@@ -8,8 +8,6 @@ import com.parkview.ruleengine.domain.type.Fuel;
 import com.parkview.ruleengine.domain.value.ParkingSpot;
 import com.parkview.ruleengine.domain.type.ViolationType;
 import com.parkview.ruleengine.domain.value.ZoneRule;
-import com.parkview.ruleengine.service.violation.PermitService;
-import com.parkview.ruleengine.service.cache.RuleCacheService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -47,9 +45,9 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class ViolationEvaluator {
 
-    private final RuleCacheService ruleCache;
+    private final RuleSource ruleSource;
     private final RuleResolver ruleResolver;
-    private final PermitService permitService;
+    private final PermitDirectory permits;
     private final ActiveSessionDirectory sessions;
     private final VehicleDirectory vehicles;
     private final RuleEngineProperties properties;
@@ -64,7 +62,7 @@ public class ViolationEvaluator {
     public Optional<Finding> assess(Observation observation) {
         metrics.observationEvaluated();
         ParkingSpot spot = observation.spot();
-        List<ZoneRule> rules = ruleCache.rulesOf(spot.siteId(), spot.zoneId());
+        List<ZoneRule> rules = ruleSource.rulesOf(spot.place());
         VehicleContext vehicle = new VehicleContext(observation.plate(), observation.detectedClass(),
                 observation.zone().country(), vehicles, properties.vehicleLookupEnabled());
         RuleOutcome outcome = ruleResolver.resolve(rules, observation.zone(), observation.at(), vehicle);
@@ -101,8 +99,7 @@ public class ViolationEvaluator {
             log.debug("Spot {} requires permit {} but the plate is unknown: cannot decide", observation.spot().id(), required);
             return false;
         }
-        return !permitService.holdsAll(observation.plate(), observation.spot().siteId(), observation.spot().zoneId(), required,
-                observation.at());
+        return !permits.holdsAll(observation.plate(), observation.spot().place(), required, observation.at());
     }
 
     private static void addRequired(Set<String> required, String permitType) {
@@ -120,8 +117,7 @@ public class ViolationEvaluator {
             log.debug("Spot {} has a stay limit but the plate is unknown: cannot decide", observation.spot().id());
             return false;
         }
-        Optional<Instant> started = sessions.startOfActiveSession(observation.plate(), observation.spot().siteId(),
-                observation.spot().zoneId());
+        Optional<Instant> started = sessions.startOfActiveSession(observation.plate(), observation.spot().place());
         if (started.isEmpty()) {
             log.debug("No active session for {} at site {} zone {}: cannot decide overstay",
                     Plates.mask(observation.plate()), observation.spot().siteId(), observation.spot().zoneId());

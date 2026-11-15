@@ -1,5 +1,6 @@
 package com.parkview.ruleengine.service.violation;
 
+import com.parkview.platform.domain.Place;
 import com.parkview.ruleengine.domain.type.ResolutionReason;
 import com.parkview.ruleengine.domain.type.VehicleClass;
 import com.parkview.ruleengine.domain.type.ViolationType;
@@ -42,6 +43,7 @@ class DetectionServiceTest {
     private static final Instant NOW = Instant.parse("2026-10-09T10:00:00Z");
     private static final String ZONE = TestFixtures.ZONE;
     private static final String PLATE = TestFixtures.PLATE;
+    private static final Place PLACE = Place.of(ZONE, ZONE);
     private static final List<List<Double>> SQUARE =
             List.of(List.of(0.0, 0.0), List.of(0.0, 10.0), List.of(10.0, 10.0), List.of(10.0, 0.0));
 
@@ -49,18 +51,23 @@ class DetectionServiceTest {
     private final RuleCacheService ruleCache = mock(RuleCacheService.class);
     private final BoundaryService boundary = mock(BoundaryService.class);
     private final ViolationEvaluator evaluator = mock(ViolationEvaluator.class);
-    private final ViolationService violations = mock(ViolationService.class);
+    private final ViolationOpener opener = mock(ViolationOpener.class);
+    private final ViolationResolver resolver = mock(ViolationResolver.class);
     private final ParkingSpot spot = TestFixtures.spot("permit", "resident", 0, 0);
     private final ZoneInfo zoneInfo = ZoneInfo.unknown();
     private DetectionService service;
 
     @BeforeEach
     void setUp() {
-        service = new DetectionService(spotCache, ruleCache, boundary, evaluator, violations, TestFixtures.properties(), Clock.fixed(NOW, ZoneOffset.UTC));
+        service = new DetectionService(spotCache, ruleCache, boundary, evaluator, opener, resolver, TestFixtures.properties(),
+                Clock.fixed(NOW, ZoneOffset.UTC));
         when(spotCache.spotsOf(ZONE, null)).thenReturn(List.of(spot));
         // an event that names only the zone: the zone of the fixtures is its own site
-        when(ruleCache.siteIdOf(ZONE)).thenReturn(ZONE);
-        when(ruleCache.placeOf(ZONE, ZONE)).thenReturn(zoneInfo);
+        when(ruleCache.resolve(any(Place.class))).thenAnswer(invocation -> {
+            Place named = invocation.getArgument(0);
+            return named.hasSite() || !ZONE.equals(named.zoneId()) ? named : Place.of(ZONE, ZONE);
+        });
+        when(ruleCache.placeOf(Place.of(ZONE, ZONE))).thenReturn(zoneInfo);
     }
 
     private static VehicleDetectedEvent event(String plate, List<List<Double>> polygon, String vehicleClass) {
@@ -83,9 +90,9 @@ class DetectionServiceTest {
 
         service.process(event("abc 123", SQUARE, null));
 
-        InOrder order = inOrder(violations);
-        order.verify(violations).confirm(spot, ViolationType.WRONG_PERMIT, PLATE, "cam-1", "summary", NOW);
-        order.verify(violations).resolveOthers(PLATE, ZONE, ZONE, spot.id(), ViolationType.WRONG_PERMIT, ResolutionReason.CORRECTED);
+        InOrder order = inOrder(opener, resolver);
+        order.verify(opener).confirm(spot, ViolationType.WRONG_PERMIT, PLATE, "cam-1", "summary", NOW);
+        order.verify(resolver).resolveOthers(PLATE, PLACE, spot.id(), ViolationType.WRONG_PERMIT, ResolutionReason.CORRECTED);
     }
 
     @Test
@@ -95,8 +102,8 @@ class DetectionServiceTest {
 
         service.process(event(PLATE, SQUARE, "car"));
 
-        verify(violations).confirm(spot, ViolationType.OVERSTAY, PLATE, "cam-1", "summary", NOW);
-        verify(violations).resolveOthers(PLATE, ZONE, ZONE, spot.id(), ViolationType.OVERSTAY, ResolutionReason.CORRECTED);
+        verify(opener).confirm(spot, ViolationType.OVERSTAY, PLATE, "cam-1", "summary", NOW);
+        verify(resolver).resolveOthers(PLATE, PLACE, spot.id(), ViolationType.OVERSTAY, ResolutionReason.CORRECTED);
     }
 
     @Test
@@ -136,8 +143,8 @@ class DetectionServiceTest {
 
         service.process(event(PLATE, SQUARE, null));
 
-        verify(violations, never()).confirm(any(), any(), anyString(), anyString(), any(), any());
-        verify(violations).resolveOthers(PLATE, ZONE, ZONE, null, null, ResolutionReason.CORRECTED);
+        verify(opener, never()).confirm(any(), any(), anyString(), anyString(), any(), any());
+        verify(resolver).resolveOthers(PLATE, PLACE, null, null, ResolutionReason.CORRECTED);
     }
 
     @Test
@@ -146,7 +153,7 @@ class DetectionServiceTest {
 
         service.process(event(PLATE, SQUARE, null));
 
-        verify(violations).resolveOthers(PLATE, ZONE, ZONE, null, null, ResolutionReason.LEFT);
+        verify(resolver).resolveOthers(PLATE, PLACE, null, null, ResolutionReason.LEFT);
         verifyNoInteractions(evaluator);
     }
 
@@ -157,7 +164,7 @@ class DetectionServiceTest {
         service.process(new VehicleDetectedEvent("cam-9", null, PLATE, SQUARE, null, null, 0.9, 0.9, NOW.toEpochMilli(), null, null, "s1"));
 
         verify(spotCache).spotsOf("s1", null);
-        verifyNoInteractions(boundary, evaluator, violations);
+        verifyNoInteractions(boundary, evaluator, opener, resolver);
     }
 
     @Test
@@ -165,7 +172,7 @@ class DetectionServiceTest {
         service.process(event(null, SQUARE, null));
         service.process(event("  ", SQUARE, null));
 
-        verifyNoInteractions(boundary, evaluator, violations);
+        verifyNoInteractions(boundary, evaluator, opener, resolver);
     }
 
     @Test
@@ -174,14 +181,14 @@ class DetectionServiceTest {
 
         service.process(event(PLATE, SQUARE, null));
 
-        verifyNoInteractions(boundary, evaluator, violations);
+        verifyNoInteractions(boundary, evaluator, opener, resolver);
     }
 
     @Test
     void anUnusablePolygonIsDiscarded() {
         service.process(event(PLATE, List.of(List.of(0.0, 0.0), List.of(1.0), List.of(2.0, 2.0)), null));
 
-        verifyNoInteractions(boundary, evaluator, violations);
+        verifyNoInteractions(boundary, evaluator, opener, resolver);
     }
 
     @Test
@@ -198,7 +205,7 @@ class DetectionServiceTest {
         verify(spotCache).spotsOf(ZONE, viewId);
         verify(spotCache, never()).spotsOf(ZONE, null);
         verify(boundary, never()).check(any(Polygon.class), eq(List.of(spot)));
-        verify(violations).confirm(viewSpot, ViolationType.NO_PARKING, PLATE, "cam-1", "summary", NOW);
+        verify(opener).confirm(viewSpot, ViolationType.NO_PARKING, PLATE, "cam-1", "summary", NOW);
     }
 
     @Test
@@ -219,7 +226,7 @@ class DetectionServiceTest {
 
         service.process(eventOnView(viewId));
 
-        verifyNoInteractions(boundary, evaluator, violations);
+        verifyNoInteractions(boundary, evaluator, opener, resolver);
     }
 
 
@@ -233,7 +240,7 @@ class DetectionServiceTest {
 
         service.process(eventAt(NOW.minusSeconds(601)));
 
-        verifyNoInteractions(violations, evaluator, boundary);
+        verifyNoInteractions(opener, resolver, evaluator, boundary);
     }
 
     @Test
@@ -247,7 +254,7 @@ class DetectionServiceTest {
         ArgumentCaptor<Observation> captured = ArgumentCaptor.forClass(Observation.class);
         verify(evaluator).assess(captured.capture());
         assertThat(captured.getValue().at()).isEqualTo(seen);
-        verify(violations).confirm(spot, ViolationType.WRONG_PERMIT, PLATE, "cam-1", "summary", seen);
+        verify(opener).confirm(spot, ViolationType.WRONG_PERMIT, PLATE, "cam-1", "summary", seen);
     }
 
     @Test
@@ -258,6 +265,6 @@ class DetectionServiceTest {
         service.process(eventAt(NOW.plusSeconds(3600)));
         service.process(new VehicleDetectedEvent("cam-1", ZONE, PLATE, SQUARE, null, null, 0.9, 0.9, 0L, null, null));
 
-        verify(violations, org.mockito.Mockito.times(2)).confirm(spot, ViolationType.WRONG_PERMIT, PLATE, "cam-1", "summary", NOW);
+        verify(opener, org.mockito.Mockito.times(2)).confirm(spot, ViolationType.WRONG_PERMIT, PLATE, "cam-1", "summary", NOW);
     }
 }

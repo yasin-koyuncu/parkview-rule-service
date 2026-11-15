@@ -10,6 +10,7 @@ import com.parkview.ruleengine.service.fine.FineIssuingService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.Pageable;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -35,13 +36,13 @@ class ViolationJobsTest {
     private static final Instant SEEN_SINCE = NOW.minus(Duration.ofSeconds(120));
 
     private final ViolationRepository violations = mock(ViolationRepository.class);
-    private final ViolationService violationService = mock(ViolationService.class);
+    private final ViolationResolver violationResolver = mock(ViolationResolver.class);
     private final FineIssuingService fineService = mock(FineIssuingService.class);
     private ViolationJobs jobs;
 
     @BeforeEach
     void setUp() {
-        jobs = new ViolationJobs(violations, violationService, fineService, TestFixtures.properties(),
+        jobs = new ViolationJobs(violations, violationResolver, fineService, TestFixtures.properties(),
                 Clock.fixed(NOW, ZoneOffset.UTC), TestTransactions.template());
     }
 
@@ -109,10 +110,32 @@ class ViolationJobsTest {
         Violation healthy = due();
         when(violations.findDueForFine(any(), any(), any(Pageable.class))).thenReturn(List.of(again.getId(), healthy.getId()));
         doThrow(new org.springframework.dao.DataIntegrityViolationException("fine_evidence_violation_id_key")).when(fineService).issueFine(again);
+        // the other transaction that won the unique index has committed its fine by now
+        Violation fined = TestFixtures.violation(ViolationType.WRONG_PERMIT, NOW.minusSeconds(3600), NOW.minusSeconds(60));
+        ReflectionTestUtils.setField(fined, "id", again.getId());
+        fined.markFined(UUID.randomUUID(), NOW);
+        when(violations.findById(again.getId())).thenReturn(Optional.of(fined));
 
         ViolationJobs.BatchResult result = jobs.issueBatch();
 
         assertThat(result).isEqualTo(new ViolationJobs.BatchResult(2, 1, 0));
+        verify(fineService).issueFine(healthy);
+        verify(violations, never()).deferFining(any(), any());
+    }
+
+    @Test
+    void aConstraintFailureThatIsNotAnExistingFineIsNotReportedAsAlreadyFinedAndTheOthersStillRun() {
+        Violation failing = due();
+        Violation healthy = due();
+        when(violations.findDueForFine(any(), any(), any(Pageable.class))).thenReturn(List.of(failing.getId(), healthy.getId()));
+        doThrow(new org.springframework.dao.DataIntegrityViolationException("fines_amount_check")).when(fineService).issueFine(failing);
+        // the violation still has no fine: this was a real failure (a check on the amount), retried by the next sweep
+        when(violations.findById(failing.getId())).thenReturn(Optional.of(failing));
+
+        ViolationJobs.BatchResult result = jobs.issueBatch();
+
+        assertThat(result).isEqualTo(new ViolationJobs.BatchResult(2, 1, 0));
+        verify(violations).findById(failing.getId());
         verify(fineService).issueFine(healthy);
         verify(violations, never()).deferFining(any(), any());
     }
@@ -173,11 +196,11 @@ class ViolationJobsTest {
     }
 
     @Test
-    void staleSweepDelegatesToTheViolationService() {
-        when(violationService.resolveStale()).thenReturn(3);
+    void staleSweepDelegatesToTheViolationResolver() {
+        when(violationResolver.resolveStale()).thenReturn(3);
 
         jobs.resolveStaleViolations();
 
-        verify(violationService).resolveStale();
+        verify(violationResolver).resolveStale();
     }
 }

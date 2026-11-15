@@ -1,5 +1,6 @@
 package com.parkview.ruleengine.controller;
 
+import com.parkview.platform.domain.Strings;
 import com.parkview.ruleengine.domain.Dispute;
 import com.parkview.ruleengine.domain.type.DisputeChannel;
 import com.parkview.ruleengine.domain.type.DisputeStatus;
@@ -12,7 +13,6 @@ import com.parkview.platform.security.servlet.AuthenticatedUser;
 import com.parkview.platform.security.servlet.CurrentUser;
 import com.parkview.ruleengine.service.fine.DisputeQueryService;
 import com.parkview.ruleengine.service.fine.DisputeService;
-import com.parkview.ruleengine.util.ZoneIds;
 import com.parkview.platform.web.PagedResponses;
 import com.parkview.platform.web.ResourceNotFoundException;
 import io.swagger.v3.oas.annotations.Operation;
@@ -131,8 +131,8 @@ public class DisputeController {
             @Parameter(description = "Zero-based page") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "Page size, at most 500") @RequestParam(defaultValue = "100") int size) {
         AuthenticatedUser user = currentUser.require();
-        String site = ZoneIds.normalize(siteId);
-        String zone = ZoneIds.normalize(zoneId);
+        String site = Strings.blankToNull(siteId);
+        String zone = Strings.blankToNull(zoneId);
         Collection<String> sites;
         if (zone != null) {
             accessPolicy.requireZone(user, zone);

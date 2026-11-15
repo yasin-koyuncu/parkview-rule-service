@@ -3,7 +3,8 @@ package com.parkview.ruleengine.controller;
 import com.parkview.ruleengine.domain.Violation;
 import com.parkview.ruleengine.domain.type.ViolationType;
 import com.parkview.ruleengine.client.ZoneDirectory;
-import com.parkview.ruleengine.service.violation.ViolationService;
+import com.parkview.ruleengine.service.violation.ViolationQueryService;
+import com.parkview.ruleengine.service.violation.ViolationResolver;
 import com.parkview.platform.web.ConflictException;
 import com.parkview.platform.web.ResourceNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
@@ -55,7 +56,10 @@ class ViolationControllerTest {
     MockMvc mvc;
 
     @MockitoBean
-    ViolationService violationService;
+    ViolationQueryService violationQuery;
+
+    @MockitoBean
+    ViolationResolver violationResolver;
 
     private Violation violation;
 
@@ -77,7 +81,7 @@ class ViolationControllerTest {
 
     @Test
     void operatorReadsActiveViolationsOfOwnZoneWithTheSameJsonShapeAsBefore() throws Exception {
-        when(violationService.activeByZone(eq("z1"), any()))
+        when(violationQuery.activeByZone(eq("z1"), any()))
                 .thenReturn(new PageImpl<>(List.of(violation), PageRequest.of(0, 100), 1));
 
         mvc.perform(get("/api/v1/violations/zone/z1").with(user("operator", List.of(), List.of("z1"))))
@@ -101,12 +105,12 @@ class ViolationControllerTest {
                 .andExpect(content().contentTypeCompatibleWith("application/problem+json"));
         mvc.perform(get("/api/v1/violations/zone/z1").with(user("driver", List.of("ABC123"), List.of("z1"))))
                 .andExpect(status().isForbidden());
-        verify(violationService, never()).activeByZone(any(), any());
+        verify(violationQuery, never()).activeByZone(any(), any());
     }
 
     @Test
     void aSiteRemovedFromAnOperatorStopsWorkingWithoutANewToken() throws Exception {
-        when(violationService.activeByZone(eq("z1"), any())).thenReturn(new PageImpl<>(List.of()));
+        when(violationQuery.activeByZone(eq("z1"), any())).thenReturn(new PageImpl<>(List.of()));
 
         mvc.perform(get("/api/v1/violations/zone/z1").with(user("operator", List.of(), List.of("z1"))))
                 .andExpect(status().isOk());
@@ -117,7 +121,7 @@ class ViolationControllerTest {
 
     @Test
     void adminMayReadAnyZone() throws Exception {
-        when(violationService.activeByZone(eq("zX"), any())).thenReturn(new PageImpl<>(List.of()));
+        when(violationQuery.activeByZone(eq("zX"), any())).thenReturn(new PageImpl<>(List.of()));
 
         mvc.perform(get("/api/v1/violations/zone/zX").with(user("admin", List.of(), List.of())))
                 .andExpect(status().isOk())
@@ -126,18 +130,18 @@ class ViolationControllerTest {
 
     @Test
     void pageSizeIsBounded() throws Exception {
-        when(violationService.activeByZone(eq("z1"), any())).thenReturn(new PageImpl<>(List.of()));
+        when(violationQuery.activeByZone(eq("z1"), any())).thenReturn(new PageImpl<>(List.of()));
 
         mvc.perform(get("/api/v1/violations/zone/z1?page=-3&size=100000").with(user("operator", List.of(), List.of("z1"))))
                 .andExpect(status().isOk());
 
-        verify(violationService).activeByZone(eq("z1"), org.mockito.ArgumentMatchers.argThat(
+        verify(violationQuery).activeByZone(eq("z1"), org.mockito.ArgumentMatchers.argThat(
                 (org.springframework.data.domain.Pageable p) -> p.getPageSize() == 500 && p.getPageNumber() == 0));
     }
 
     @Test
     void driverMayReadOnlyOwnPlateAndPlateIsNormalised() throws Exception {
-        when(violationService.byPlate(eq("ABC123"), any())).thenReturn(new PageImpl<>(List.of(violation)));
+        when(violationQuery.byPlate(eq("ABC123"), any())).thenReturn(new PageImpl<>(List.of(violation)));
 
         mvc.perform(get("/api/v1/violations/plate/abc-123").with(user("driver", List.of("ABC 123"), List.of())))
                 .andExpect(status().isOk())
@@ -148,10 +152,10 @@ class ViolationControllerTest {
 
     @Test
     void anAdminSeesEveryZoneOfAPlateButAnOperatorOnlyTheirOwn() throws Exception {
-        when(violationService.byPlate(eq("XYZ999"), any())).thenReturn(new PageImpl<>(List.of(violation)));
+        when(violationQuery.byPlate(eq("XYZ999"), any())).thenReturn(new PageImpl<>(List.of(violation)));
         // the violation of the plate is in z1; an operator of z2 is asked for z2 only and gets nothing
-        when(violationService.byPlateInSites(eq("XYZ999"), eq(List.of("z2")), any())).thenReturn(new PageImpl<>(List.of()));
-        when(violationService.byPlateInSites(eq("XYZ999"), eq(List.of("z1")), any())).thenReturn(new PageImpl<>(List.of(violation)));
+        when(violationQuery.byPlateInSites(eq("XYZ999"), eq(List.of("z2")), any())).thenReturn(new PageImpl<>(List.of()));
+        when(violationQuery.byPlateInSites(eq("XYZ999"), eq(List.of("z1")), any())).thenReturn(new PageImpl<>(List.of(violation)));
 
         mvc.perform(get("/api/v1/violations/plate/XYZ999").with(user("admin", List.of(), List.of())))
                 .andExpect(status().isOk())
@@ -162,15 +166,15 @@ class ViolationControllerTest {
         mvc.perform(get("/api/v1/violations/plate/XYZ999").with(user("operator", List.of(), List.of("z1"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].zoneId").value("z1"));
-        verify(violationService, org.mockito.Mockito.times(1)).byPlate(eq("XYZ999"), any());
+        verify(violationQuery, org.mockito.Mockito.times(1)).byPlate(eq("XYZ999"), any());
     }
 
     @Test
     void theSnapshotKeyOfAViolationIsForStaffWithViolationReadOnly() throws Exception {
         ReflectionTestUtils.setField(violation, "imagePath", "snapshots/1.jpg");
-        when(violationService.byPlate(eq("ABC123"), any())).thenReturn(new PageImpl<>(List.of(violation)));
-        when(violationService.byPlateInSites(eq("ABC123"), eq(List.of("z1")), any())).thenReturn(new PageImpl<>(List.of(violation)));
-        when(violationService.activeByZone(eq("z1"), any())).thenReturn(new PageImpl<>(List.of(violation)));
+        when(violationQuery.byPlate(eq("ABC123"), any())).thenReturn(new PageImpl<>(List.of(violation)));
+        when(violationQuery.byPlateInSites(eq("ABC123"), eq(List.of("z1")), any())).thenReturn(new PageImpl<>(List.of(violation)));
+        when(violationQuery.activeByZone(eq("z1"), any())).thenReturn(new PageImpl<>(List.of(violation)));
 
         mvc.perform(get("/api/v1/violations/plate/ABC123").with(user("driver", List.of("ABC123"), List.of())))
                 .andExpect(status().isOk())
@@ -189,7 +193,7 @@ class ViolationControllerTest {
 
     @Test
     void zoneListNeedsViolationReadAndTheZone() throws Exception {
-        when(violationService.activeByZone(eq("z1"), any())).thenReturn(new PageImpl<>(List.of()));
+        when(violationQuery.activeByZone(eq("z1"), any())).thenReturn(new PageImpl<>(List.of()));
 
         for (var allowed : List.of(userWith("operator", List.of("violation:read"), List.of(), List.of("z1")), user("operator", List.of(), List.of("z1")),
                 token("admin", List.of("violation:read"), List.of(), List.of()))) {
@@ -207,9 +211,9 @@ class ViolationControllerTest {
 
     @Test
     void plateListAcceptsDriversAndHoldersOfViolationReadOnly() throws Exception {
-        when(violationService.byPlate(eq("XYZ999"), any())).thenReturn(new PageImpl<>(List.of()));
-        when(violationService.byPlate(eq("ABC123"), any())).thenReturn(new PageImpl<>(List.of()));
-        when(violationService.byPlateInSites(eq("XYZ999"), any(), any())).thenReturn(new PageImpl<>(List.of()));
+        when(violationQuery.byPlate(eq("XYZ999"), any())).thenReturn(new PageImpl<>(List.of()));
+        when(violationQuery.byPlate(eq("ABC123"), any())).thenReturn(new PageImpl<>(List.of()));
+        when(violationQuery.byPlateInSites(eq("XYZ999"), any(), any())).thenReturn(new PageImpl<>(List.of()));
 
         mvc.perform(get("/api/v1/violations/plate/XYZ999").with(userWith("operator", List.of("violation:read"), List.of(), List.of("z1"))))
                 .andExpect(status().isOk());
@@ -228,7 +232,7 @@ class ViolationControllerTest {
 
     @Test
     void resolveNeedsViolationResolveAndTheZone() throws Exception {
-        when(violationService.get(violation.getId())).thenReturn(violation);
+        when(violationQuery.get(violation.getId())).thenReturn(violation);
 
         mvc.perform(patch("/api/v1/violations/{id}/resolve", violation.getId())
                         .with(userWith("operator", List.of("violation:resolve"), List.of(), List.of("z1"))))
@@ -236,7 +240,7 @@ class ViolationControllerTest {
         mvc.perform(patch("/api/v1/violations/{id}/resolve", violation.getId())
                         .with(token("admin", List.of("violation:resolve"), List.of(), List.of())))
                 .andExpect(status().isNoContent());
-        verify(violationService, org.mockito.Mockito.times(2)).resolveManually(violation.getId());
+        verify(violationResolver, org.mockito.Mockito.times(2)).resolveManually(violation.getId());
 
         for (var denied : List.of(userWith("operator", List.of("violation:read", "zone:read"), List.of(), List.of("z1")),
                 userWith("operator", List.of(), List.of(), List.of("z1")), userWithoutClaim("operator", List.of(), List.of("z1")),
@@ -244,22 +248,22 @@ class ViolationControllerTest {
                 userWith("operator", List.of("violation:resolve"), List.of(), List.of("z2")))) {
             mvc.perform(patch("/api/v1/violations/{id}/resolve", violation.getId()).with(denied)).andExpect(status().isForbidden());
         }
-        verify(violationService, org.mockito.Mockito.times(2)).resolveManually(any());
+        verify(violationResolver, org.mockito.Mockito.times(2)).resolveManually(any());
     }
 
     @Test
     void operatorOfTheZoneCanResolve() throws Exception {
-        when(violationService.get(violation.getId())).thenReturn(violation);
+        when(violationQuery.get(violation.getId())).thenReturn(violation);
 
         mvc.perform(patch("/api/v1/violations/{id}/resolve", violation.getId()).with(user("operator", List.of(), List.of("z1"))))
                 .andExpect(status().isNoContent());
 
-        verify(violationService).resolveManually(violation.getId());
+        verify(violationResolver).resolveManually(violation.getId());
     }
 
     @Test
     void resolveIsForbiddenForOtherZonesAndDrivers() throws Exception {
-        when(violationService.get(violation.getId())).thenReturn(violation);
+        when(violationQuery.get(violation.getId())).thenReturn(violation);
 
         mvc.perform(patch("/api/v1/violations/{id}/resolve", violation.getId()).with(user("operator", List.of(), List.of("z2"))))
                 .andExpect(status().isForbidden());
@@ -268,13 +272,13 @@ class ViolationControllerTest {
         mvc.perform(patch("/api/v1/violations/{id}/resolve", violation.getId()))
                 .andExpect(status().isUnauthorized());
 
-        verify(violationService, never()).resolveManually(any());
+        verify(violationResolver, never()).resolveManually(any());
     }
 
     @Test
     void resolveOfAnUnknownViolationIsNotFound() throws Exception {
         UUID id = UUID.randomUUID();
-        when(violationService.get(id)).thenThrow(new ResourceNotFoundException("Violation", id));
+        when(violationQuery.get(id)).thenThrow(new ResourceNotFoundException("Violation", id));
 
         mvc.perform(patch("/api/v1/violations/{id}/resolve", id).with(user("admin", List.of(), List.of())))
                 .andExpect(status().isNotFound())
@@ -284,9 +288,9 @@ class ViolationControllerTest {
 
     @Test
     void resolveOfAFinedViolationIsAConflict() throws Exception {
-        when(violationService.get(violation.getId())).thenReturn(violation);
+        when(violationQuery.get(violation.getId())).thenReturn(violation);
         doThrow(new ConflictException("A fine has already been issued for this violation"))
-                .when(violationService).resolveManually(violation.getId());
+                .when(violationResolver).resolveManually(violation.getId());
 
         mvc.perform(patch("/api/v1/violations/{id}/resolve", violation.getId()).with(user("operator", List.of(), List.of("z1"))))
                 .andExpect(status().isConflict());

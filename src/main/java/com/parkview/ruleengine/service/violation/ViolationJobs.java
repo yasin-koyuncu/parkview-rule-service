@@ -39,7 +39,7 @@ import java.util.UUID;
 public class ViolationJobs {
 
     private final ViolationRepository violations;
-    private final ViolationService violationService;
+    private final ViolationResolver violationResolver;
     private final FineIssuingService fineIssuing;
     private final RuleEngineProperties properties;
     private final Clock clock;
@@ -57,7 +57,7 @@ public class ViolationJobs {
 
     @Scheduled(fixedDelayString = "${parkview.rule-engine.stale-sweep-ms:60000}")
     public void resolveStaleViolations() {
-        int resolved = violationService.resolveStale();
+        int resolved = violationResolver.resolveStale();
         if (resolved > 0) {
             log.info("Stale sweep closed {} violations", resolved);
         }
@@ -81,8 +81,13 @@ public class ViolationJobs {
                 }
             } catch (DataIntegrityViolationException e) {
                 // the database allows one fine per violation (unique violation_id on the evidence, unique fine_id on the violation): a
-                // second fine for the same violation is rolled back as a whole and counts as already fined, not as a failure
-                log.warn("Violation {} was fined already, no second fine was issued", id);
+                // second fine for the same violation is rolled back as a whole and counts as already fined, not as a failure. Any other
+                // constraint (a check on the amount or the currency, a not-null) is a real failure and is logged as one
+                if (isFined(id)) {
+                    log.warn("Violation {} was fined already, no second fine was issued", id);
+                } else {
+                    log.error("Could not issue a fine for violation {}; it is retried on the next sweep", id, e);
+                }
             } catch (RuntimeException e) {
                 log.error("Could not issue a fine for violation {}; it is retried on the next sweep", id, e);
             }
@@ -91,6 +96,11 @@ public class ViolationJobs {
             log.info("Fine sweep: {} due, {} fined, {} deferred", due.size(), fined, deferred);
         }
         return new BatchResult(due.size(), fined, deferred);
+    }
+
+    /** Whether the violation carries a fine now (read in its own transaction, after the failed one rolled back). */
+    private boolean isFined(UUID id) {
+        return violations.findById(id).map(violation -> violation.getFineIssuedAt() != null).orElse(false);
     }
 
     private FineOutcome fineOne(UUID id, Instant now, Instant seenSince) {
