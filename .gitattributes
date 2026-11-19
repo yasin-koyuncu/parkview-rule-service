@@ -1,0 +1,2 @@
+# the Claude hooks are run by bash: they must stay LF on every checkout
+*.sh text eol=lf
