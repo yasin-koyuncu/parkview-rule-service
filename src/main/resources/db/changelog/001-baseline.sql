@@ -135,6 +135,22 @@ create index fine_disputes_fine_opened_idx on fine_disputes (fine_id, opened_at 
 create index fine_disputes_site_opened_idx on fine_disputes (site_id, opened_at desc);
 create index fine_disputes_zone_opened_idx on fine_disputes (zone_id, opened_at desc);
 
+-- One row per look-up on the public fine page (ADR 0020): the counter of wrong plates per fine number and the audit of the page. No plate is
+-- stored, the address of the caller only as a keyed hash. `fine_id` has no foreign key on purpose: a number that does not exist is counted
+-- like one that does, so the page cannot be used to find out which fines exist. The service deletes the rows after
+-- `parkview.public-lookup.keep`.
+create table fine_public_lookups (
+  id          bigint generated always as identity primary key,
+  fine_id     uuid        not null,
+  at          timestamptz not null default now(),
+  outcome     text        not null,
+  client_hash text,
+  constraint fine_public_lookups_outcome_check check (outcome in ('ok','not_found','locked'))
+);
+
+create index fine_public_lookups_fine_at_idx on fine_public_lookups (fine_id, at desc);
+create index fine_public_lookups_at_idx on fine_public_lookups (at);
+
 -- Permits that allow a plate to park in spots that require a given permit type. site_id null = every site, zone_id null = the whole site.
 create table plate_permits (
   id           uuid primary key default gen_random_uuid(),

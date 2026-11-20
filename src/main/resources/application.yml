@@ -70,7 +70,15 @@ parkview:
   security:
     # issuer, audience and the keys come from the platform defaults (SUPABASE_URL, INTERNAL_API_KEY - callers hold it as RULE_INTERNAL_API_KEY -,
     # INTERNAL_API_KEY_PREVIOUS, OPS_API_KEY for the non-health actuator and the retention endpoints)
-    public-paths: []
+    # the public fine page (ADR 0020): the proof is the fine number and the plate in the request, checked by PublicFineService; the gateway lists it as PUBLIC too
+    public-paths: ["/api/v1/public/fines/*/lookup"]
+  # the public fine page: wrong plates per fine number, how long the look-up rows are kept (no plate in them), the key of the address hash
+  public-lookup:
+    max-failures: ${PUBLIC_LOOKUP_MAX_FAILURES:5}
+    window: ${PUBLIC_LOOKUP_WINDOW:PT15M}
+    keep: ${PUBLIC_LOOKUP_KEEP:P30D}
+    hash-salt: ${PUBLIC_LOOKUP_HASH_SALT:}      # set it in production; empty hashes the address without a key
+    prune-cron: ${PUBLIC_LOOKUP_PRUNE_CRON:0 35 3 * * *}
   # the transactional outbox (entity, relay, clean-up, metrics rule.outbox.*, x-source rule-service) comes from parkview-platform (parkview-outbox);
   # source and metrics-prefix default from spring.application.name (rule-service gives rule-service and rule), the other keys keep the library defaults
   outbox:

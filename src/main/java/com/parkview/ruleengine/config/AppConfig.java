@@ -11,7 +11,7 @@ import java.time.Clock;
 
 @Configuration
 @EnableScheduling
-@EnableConfigurationProperties({RuleEngineProperties.class, LookupProperties.class, RetentionProperties.class})
+@EnableConfigurationProperties({RuleEngineProperties.class, LookupProperties.class, RetentionProperties.class, PublicLookupProperties.class})
 public class AppConfig {
 
     /** Single time source so business logic and jobs are testable with a fixed clock. */

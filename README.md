@@ -379,6 +379,29 @@ decided_at, decision_note`. At most one dispute per fine is open (partial unique
 Violation JSON: `id, spotId, zoneId, plate, userId, violationType, detectedAt, graceUntil, lastSeenAt, resolvedAt,
 resolutionReason, fineIssuedAt, fineId, imagePath, notifiedAt, createdAt`. `violationType` is `BOUNDARY_EXCEEDED | WRONG_PERMIT | OVERSTAY | NO_PARKING | WRONG_VEHICLE_TYPE`.
 
+### The public fine page (ADR 0020)
+
+`POST /api/v1/public/fines/{fineId}/lookup` with `{"plate": "..."}` reads a fine **without a token**: the proof is the fine number (a random UUID) and the plate, which
+goes in the body and never in the URL. It is the one handler of this service without `@PreAuthorize`: the path is in `parkview.security.public-paths`, the gateway lists it
+as `PUBLIC` for this path and `POST` only, and `PublicFineService` checks the plate (normalised, compared in constant time).
+
+* The answer is `PublicFineResponse`: the plain-language explanation of ADR 0005 (`EvidenceMapper.toPublic` builds it from the driver's explanation, so the two cannot drift
+  apart) and the status `unpaid` / `paid` / `voided`. Never snapshots, detection ids, the keeper, user ids, other plates or the internal ids of sites, zones and cameras.
+  Headers: `Cache-Control: no-store`, `X-Robots-Tag: noindex`, `Referrer-Policy: no-referrer`.
+* An unknown number and a wrong plate are the same `404` (`notFound.fine`). A plate with characters a plate cannot have is a `400`.
+* Wrong plates are counted per fine number in `fine_public_lookups`, for numbers that do not exist as well: after `max-failures` (5) within `window` (15 minutes) the number
+  answers `429` (`publicLookup.locked`, with `Retry-After`) even for the right plate. The gateway adds a per-address limit (the tier of the sign-in endpoints).
+* Every look-up is a row: fine number, time, outcome (`ok`, `not_found`, `locked`) and a keyed hash of the caller's address. The plate that was typed is never stored or logged.
+  `PublicLookupPruneJob` deletes rows older than `keep` (30 days) every night.
+
+| Variable | Default | Description |
+|---|---|---|
+| `PUBLIC_LOOKUP_MAX_FAILURES` | `5` | wrong plates per fine number within the window before it is locked |
+| `PUBLIC_LOOKUP_WINDOW` | `PT15M` | the window the wrong plates are counted in |
+| `PUBLIC_LOOKUP_KEEP` | `P30D` | how long the look-up rows are kept (at least the window) |
+| `PUBLIC_LOOKUP_HASH_SALT` | empty | key of the address hash; set it in production (empty hashes without a key) |
+| `PUBLIC_LOOKUP_PRUNE_CRON` | `0 35 3 * * *` | when old rows are deleted |
+
 ## Events
 
 | Direction | Exchange / routing key | Queue | Payload |

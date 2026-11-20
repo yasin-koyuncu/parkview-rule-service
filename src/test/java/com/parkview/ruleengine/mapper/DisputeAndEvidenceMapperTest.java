@@ -152,6 +152,33 @@ class DisputeAndEvidenceMapperTest {
     }
 
     @Test
+    void thePublicResponseIsTheExplanationPlusTheStatusAndNothingThatIdentifiesSomethingElse() {
+        FineExplanation x = new FineExplanation(fine, evidence, "Storgatan 1", "Storgatan 1", DisputeStatus.OPEN);
+        ExplanationResponse explanation = EvidenceMapper.toExplanation(x);
+
+        var response = EvidenceMapper.toPublic(x);
+
+        JsonNode node = json.valueToTree(response);
+        assertThat(node.fieldNames()).toIterable().containsExactlyInAnyOrder("fineId", "issuedAt", "amount", "currency", "status", "zoneAddress",
+                "siteAddress", "spotNumber", "reasonCode", "reasonText", "ruleSummary", "detectedAt", "graceMinutes", "graceExpiredAt", "disputeStatus");
+        assertThat(node.toString()).doesNotContain("snapshots/cam-1").doesNotContain(evidence.getDetectionIds().get(0)).doesNotContain("ABC123");
+        assertThat(response.status()).isEqualTo("unpaid");
+        // same values as the driver's explanation, so the two cannot drift apart
+        assertThat(response).usingRecursiveComparison().ignoringFields("status").isEqualTo(explanation);
+    }
+
+    @Test
+    void thePublicStatusIsPaidOrVoidedWhenTheFineIs() {
+        FineExplanation x = new FineExplanation(fine, null, "Storgatan 1", "Storgatan 1", null);
+        ReflectionTestUtils.setField(fine, "paid", true);
+        assertThat(EvidenceMapper.toPublic(x).status()).isEqualTo("paid");
+
+        ReflectionTestUtils.setField(fine, "paid", false);
+        ReflectionTestUtils.setField(fine, "voidedAt", ISSUED.plusSeconds(60));
+        assertThat(EvidenceMapper.toPublic(x).status()).isEqualTo("voided");
+    }
+
+    @Test
     void anExplanationOfAFineWithoutEvidenceKeepsWhatTheFineKnows() {
         ExplanationResponse response = EvidenceMapper.toExplanation(new FineExplanation(fine, null, "Storgatan 1", "Storgatan 1", null));
 

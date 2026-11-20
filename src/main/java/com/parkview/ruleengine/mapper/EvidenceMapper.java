@@ -4,6 +4,7 @@ import com.parkview.ruleengine.domain.Fine;
 import com.parkview.ruleengine.domain.FineEvidence;
 import com.parkview.ruleengine.dto.response.EvidenceResponse;
 import com.parkview.ruleengine.dto.response.ExplanationResponse;
+import com.parkview.ruleengine.dto.response.PublicFineResponse;
 import com.parkview.ruleengine.service.fine.FineExplanation;
 
 import java.util.Locale;
@@ -24,6 +25,19 @@ public final class EvidenceMapper {
                 e.getSpotNumber(), e.getViolationType(), e.getRuleSummary(), e.getGraceMinutes(), e.getViolationDetectedAt(),
                 e.getGraceExpiredAt(), e.getIssuedAt(), e.getMinConfidence(), e.getDecisionBasis(), e.getDetectionIds(),
                 e.getImagePaths());
+    }
+
+    /**
+     * The public fine page (ADR 0020): the driver's explanation and the status of the fine. Built from {@link #toExplanation} so the two
+     * cannot drift apart: what is never shown to a driver is never shown here.
+     */
+    public static PublicFineResponse toPublic(FineExplanation x) {
+        ExplanationResponse e = toExplanation(x);
+        Fine fine = x.fine();
+        String status = fine.isVoided() ? "voided" : fine.isPaid() ? "paid" : "unpaid";
+        return new PublicFineResponse(e.fineId(), e.issuedAt(), e.amount(), e.currency(), status, e.zoneAddress(), e.siteAddress(),
+                e.spotNumber(), e.reasonCode(), e.reasonText(), e.ruleSummary(), e.detectedAt(), e.graceMinutes(), e.graceExpiredAt(),
+                e.disputeStatus());
     }
 
     /** The driver's view: plain language only. No snapshot keys, no detection ids, no plate (the driver asked for their own fine). */
