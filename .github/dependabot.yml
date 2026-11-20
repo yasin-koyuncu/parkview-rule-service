@@ -1,20 +1,41 @@
 version: 2
+# Pull requests target develop, the development branch. Dependabot reads this file from the DEFAULT branch (master), so a change made
+# on develop takes effect after the next merge of develop into master.
 updates:
   - package-ecosystem: "maven"
     directory: "/"
+    target-branch: "develop"
     schedule:
       interval: "weekly"
     groups:
-      spring:
-        patterns: ["org.springframework*", "org.springdoc*"]
-    open-pull-requests-limit: 5
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+    ignore:
+      # Spring Boot and the managed versions come from parkview-parent, the platform library from parkview-platform: raise the parent version instead
+      - dependency-name: "org.springframework.boot:*"
+      - dependency-name: "com.parkview.platform:*"
+      # a major version is a decision, not a weekly pull request
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    open-pull-requests-limit: 3
   - package-ecosystem: "docker"
     directory: "/"
+    target-branch: "develop"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    ignore:
+      # the JDK is pinned by the platform (21, the gateway 24): a base image must not move it
+      - dependency-name: "eclipse-temurin"
+        update-types: ["version-update:semver-major"]
+      # the build image carries the JDK of the build; it is changed together with java.version
+      - dependency-name: "maven"
+    open-pull-requests-limit: 2
   - package-ecosystem: "github-actions"
     directory: "/"
+    target-branch: "develop"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns: ["*"]
+    open-pull-requests-limit: 2
