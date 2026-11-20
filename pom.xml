@@ -18,7 +18,7 @@
     <description>Park &amp; View - rule service (parking violations, permits, fines)</description>
 
     <properties>
-        <jollyday.version>2.21.0</jollyday.version>
+        <jollyday.version>2.24.0</jollyday.version>
     </properties>
 
     <!-- Resolves parkview-parent and the platform modules; the server id `github` needs credentials in settings.xml (docs/consuming.md of parkview-platform) -->
@@ -86,7 +86,7 @@
         <dependency>
             <groupId>org.locationtech.jts</groupId>
             <artifactId>jts-core</artifactId>
-            <version>1.19.0</version>
+            <version>1.20.0</version>
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
