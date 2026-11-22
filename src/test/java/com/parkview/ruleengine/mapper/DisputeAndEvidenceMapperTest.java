@@ -143,7 +143,7 @@ class DisputeAndEvidenceMapperTest {
         ExplanationResponse response = EvidenceMapper.toExplanation(new FineExplanation(fine, evidence, "Storgatan 1", "Storgatan 1", DisputeStatus.OPEN));
 
         JsonNode node = json.valueToTree(response);
-        assertThat(node.fieldNames()).toIterable().containsExactlyInAnyOrder("fineId", "issuedAt", "amount", "currency", "zoneAddress", "spotNumber",
+        assertThat(node.fieldNames()).toIterable().containsExactlyInAnyOrder("fineId", "issuedAt", "amount", "currency", "zoneAddress", "siteAddress", "spotNumber",
                 "reasonCode", "reasonText", "ruleSummary", "detectedAt", "graceMinutes", "graceExpiredAt", "disputeStatus");
         assertThat(node.toString()).doesNotContain("snapshots/cam-1").doesNotContain(evidence.getDetectionIds().get(0)).doesNotContain("ABC123");
         assertThat(response.ruleSummary()).isEqualTo("A resident permit is required.");

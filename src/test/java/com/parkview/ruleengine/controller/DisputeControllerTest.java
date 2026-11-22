@@ -145,7 +145,7 @@ class DisputeControllerTest {
                 .andExpect(jsonPath("$.openedAt").value("2026-10-09T10:00:00Z"))
                 .andExpect(jsonPath("$.decidedAt").value(nullValue()))
                 .andExpect(jsonPath("$.decisionNote").value(nullValue()))
-                .andExpect(jsonPath("$.length()").value(14));
+                .andExpect(jsonPath("$.length()").value(17));
         verify(disputeService).open(eq(FINE_ID), eq(DisputeChannel.DRIVER), any(UUID.class), eq(MESSAGE));
     }
 

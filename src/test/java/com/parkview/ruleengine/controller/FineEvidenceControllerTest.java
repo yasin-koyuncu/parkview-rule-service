@@ -122,7 +122,7 @@ class FineEvidenceControllerTest {
                 .andExpect(jsonPath("$.decisionBasis").value("automatic"))
                 .andExpect(jsonPath("$.detectionIds[0]").value(DETECTION_ID.toString()))
                 .andExpect(jsonPath("$.imagePaths[0]").value("snapshots/cam-1/a.jpg"))
-                .andExpect(jsonPath("$.length()").value(17));
+                .andExpect(jsonPath("$.length()").value(19));
     }
 
     @Test
@@ -193,7 +193,7 @@ class FineEvidenceControllerTest {
                 .andExpect(jsonPath("$.detectionIds").doesNotExist())
                 .andExpect(jsonPath("$.plate").doesNotExist())
                 .andExpect(jsonPath("$.minConfidence").doesNotExist())
-                .andExpect(jsonPath("$.length()").value(12));
+                .andExpect(jsonPath("$.length()").value(14));
     }
 
     @Test
@@ -224,6 +224,6 @@ class FineEvidenceControllerTest {
                 .andExpect(jsonPath("$.graceExpiredAt").value(nullValue()))
                 .andExpect(jsonPath("$.disputeStatus").value(nullValue()))
                 .andExpect(jsonPath("$.zoneAddress").value("Storgatan 1"))
-                .andExpect(jsonPath("$.length()").value(12));
+                .andExpect(jsonPath("$.length()").value(14));
     }
 }

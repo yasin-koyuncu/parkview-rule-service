@@ -106,7 +106,7 @@ class FineControllerTest {
                 .andExpect(jsonPath("$[0].disputed").value(false))
                 .andExpect(jsonPath("$[0].disputeStatus").value(nullValue()))
                 .andExpect(jsonPath("$[0].userId").doesNotExist())
-                .andExpect(jsonPath("$[0].length()").value(16));
+                .andExpect(jsonPath("$[0].length()").value(15));
     }
 
     @Test
@@ -139,7 +139,7 @@ class FineControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.reason").value("wrong_permit"))
                 .andExpect(jsonPath("$.userId").doesNotExist())
-                .andExpect(jsonPath("$.length()").value(13));
+                .andExpect(jsonPath("$.length()").value(15));
     }
 
     // ---- GET /plate/{plate} ----
@@ -331,12 +331,16 @@ class FineControllerTest {
     void zoneListNeedsViolationReadAndTheZone() throws Exception {
         when(fineService.byZone(eq("z1"), isNull(), eq(false), any())).thenReturn(page(fine));
 
-        for (var allowed : List.of(user("operator", List.of(), List.of("z1")), user("admin", List.of(), List.of()),
-                userWith("operator", List.of("violation:read"), List.of(), List.of("z1")),
-                token("admin", List.of("violation:read"), List.of(), List.of()))) {
-            mvc.perform(get("/api/v1/fines/zone/z1").with(allowed))
-                    .andExpect(status().isOk())
-                    .andExpect(header().string("X-Total-Count", "1"));
+        // each caller has a subject of its own: the sites of a user are looked up by subject, so callers built together must not share one
+        var allowedCallers = List.of(
+                token("operator", WebTestSupport.permissionsOf("operator"), List.of(), List.of("z1"), "zone-caller-1"),
+                token("admin", WebTestSupport.permissionsOf("admin"), List.of(), List.of(), "zone-caller-2"),
+                token("operator", List.of("violation:read"), List.of(), List.of("z1"), "zone-caller-3"),
+                token("admin", List.of("violation:read"), List.of(), List.of(), "zone-caller-4"));
+        for (int i = 0; i < allowedCallers.size(); i++) {
+            var result = mvc.perform(get("/api/v1/fines/zone/z1").with(allowedCallers.get(i))).andReturn().getResponse();
+            org.assertj.core.api.Assertions.assertThat(result.getStatus()).as("allowed caller #%d: %s", i, result.getContentAsString()).isEqualTo(200);
+            org.assertj.core.api.Assertions.assertThat(result.getHeader("X-Total-Count")).isEqualTo("1");
         }
         for (var denied : List.of(userWith("operator", List.of("violation:resolve", "permit:manage"), List.of(), List.of("z1")),
                 userWith("operator", List.of(), List.of(), List.of("z1")), userWithoutClaim("operator", List.of(), List.of("z1")),
