@@ -8,7 +8,7 @@ Decides whether a parked vehicle breaks a parking rule and turns breaches into v
 
 * Port `8081`. Java 21, Spring Boot 3.5.3 (from `parkview-parent`), JPA + Liquibase, RabbitMQ, Caffeine, Lombok, JTS (`geometry/`), Jollyday (holidays). Dependencies: `parkview-service-starter`, `parkview-outbox`, `parkview-domain`.
 * Owns schema `rules`, login role `svc_rule`: `spot_violations`, `fines`, `plate_permits`, `fine_actions`, `fine_evidence`, `fine_disputes`, `fine_public_lookups`, `outbox_events`. Publishes views `v_fines` and `v_fine_evidence` (to `service_role`, the PostgREST role of ingestion). Reads `mapping.v_sites/v_zones/v_zone_rules/v_parking_spots`, `sessions.v_sessions`, `identity.v_user_plates/v_user_sites`, `ingestion.v_detections`. Calls lookup-service for vehicle data (`LOOKUP_INTERNAL_API_KEY`).
-* Publishes (outbox, exchange `parkview.violation`): `violation.created`, `violation.resolved`, `fine.issued`, `fine.paid`, `fine.voided`, `fine.disputed`, `fine.dispute.decided`.
+* Publishes (outbox, exchange `parkview.violation`): `violation.created`, `violation.resolved`, `fine.issued`, `fine.paid`, `fine.voided`, `fine.disputed`, `fine.dispute.decided`. The relay's transport is `parkview.outbox.transport` (`amqp` by default, `both` in the e2e stack: the same rows go to RabbitMQ and to the Kafka topic of the exchange; `parkview-outbox`, ADR 0021 of parkview-e2e).
 * Consumes: `vehicle.detected` (ingestion), `session.ended` (session), `payment.completed.fine` (payment), `map.updated` (mapping, per-instance queue). Internal API: `GET /internal/v1/fines/{id}`.
 
 ```

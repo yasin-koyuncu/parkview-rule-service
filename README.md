@@ -445,6 +445,9 @@ and when the system upholds it because the fine was paid). None carries free tex
 
 ## Transactional outbox
 
+**Transport (ADR 0021 of parkview-e2e).** The relay hands the rows to the sink chosen by `parkview.outbox.transport` of `parkview-outbox`: `amqp` (the default: RabbitMQ with publisher confirms, as described here), `kafka`, or `both` (every row goes to RabbitMQ and to the Kafka topic named like the exchange, key = the aggregate id, headers `event-type` and `message-id`; the e2e stack runs `both`). Nothing else in this section changes: the row, the claim, the retry and the idempotency key are the same on both transports. Set `SPRING_KAFKA_BOOTSTRAP_SERVERS` when the transport is not `amqp`.
+
+
 Every event this service publishes (`violation.created`, `violation.resolved`, `fine.issued`, `fine.paid`, `fine.voided`, `fine.disputed`, `fine.dispute.decided`) is a row in `outbox_events`, written by
 `OutboxService` of `parkview-outbox` in the same transaction as the state change (it refuses to run without one: a rollback leaves no event, a commit never loses one). The table, its columns and the relay are the same in every
 service that publishes events (platform standards, "Transactional outbox"); the table lives in this service's schema, so no other relay sees it. `OutboxRelay` (scheduled every `relay-interval`) claims due rows with `FOR UPDATE SKIP LOCKED`, sends them

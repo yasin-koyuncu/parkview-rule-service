@@ -9,13 +9,14 @@ paths:
   - "src/test/java/com/parkview/ruleengine/messaging/**"
   - "src/test/java/com/parkview/ruleengine/config/MapQueueTopologyTest.java"
   - "src/test/java/com/parkview/ruleengine/service/fine/FineEventPayloadTest.java"
-last-verified: 2026-11-19
+last-verified: 2026-11-22
 ---
 
 # Events and outbox
 
 ## Publishing
 
+* The transport is not this service's business: `parkview.outbox.transport` (`amqp` | `kafka` | `both`, ADR 0021) picks the sink of the relay. An event added here reaches RabbitMQ and Kafka by itself (topic = the exchange, key = the aggregate id, headers `event-type` and `message-id`, the same body); there is no per-event Kafka code to write.
 * `ViolationEvents` and `FineEvents` write each event to `outbox_events` with `OutboxService` (it refuses to run without a transaction). The relay, cleanup and `parkview.outbox.*` come from `parkview-outbox`.
 * The published events and their exchange are listed in CLAUDE.md §1. The message id is the outbox row id.
 * Payloads are camelCase JSON with `occurredAt` (the time of the fact; `timestamp` in ms where the catalogue says so). Publishers only add fields; a breaking change needs a new routing key. Events carry `siteId?` next to `zoneId?` (ADR 0009). `fine.disputed` and `fine.dispute.decided` never carry the message or the note.
