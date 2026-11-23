@@ -23,7 +23,7 @@ import java.util.Map;
  * {@code spring.rabbitmq.listener.simple.retry.max-attempts} times.
  */
 @Configuration
-@ConditionalOnProperty(prefix = "parkview.messaging", name = "consumer", havingValue = "amqp", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "parkview.messaging", name = "consumer", havingValue = "amqp")
 class ListenerRetryConfig {
 
     @Bean

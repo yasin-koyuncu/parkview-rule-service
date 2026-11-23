@@ -16,7 +16,7 @@ import org.springframework.context.annotation.Configuration;
  * reads from RabbitMQ ({@code parkview.messaging.consumer=amqp}); Kafka dead-letters to {@code <topic>.<group>.dlt}.
  */
 @Configuration
-@ConditionalOnProperty(prefix = "parkview.messaging", name = "consumer", havingValue = "amqp", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "parkview.messaging", name = "consumer", havingValue = "amqp")
 public class DeadLetterConfig {
 
     public static final String DLX = "parkview.dlx";

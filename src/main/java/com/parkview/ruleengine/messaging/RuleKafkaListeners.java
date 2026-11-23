@@ -27,7 +27,7 @@ import org.springframework.stereotype.Component;
  * An invalid payload is dead-lettered at once, a transient failure is retried in place with back-off and then dead-lettered (see {@code parkview-messaging}).
  */
 @Component
-@ConditionalOnProperty(prefix = "parkview.messaging", name = "consumer", havingValue = "kafka")
+@ConditionalOnProperty(prefix = "parkview.messaging", name = "consumer", havingValue = "kafka", matchIfMissing = true)
 public class RuleKafkaListeners {
 
     static final String INSTANCE_GROUP = "#{@parkviewInstanceGroupId}";

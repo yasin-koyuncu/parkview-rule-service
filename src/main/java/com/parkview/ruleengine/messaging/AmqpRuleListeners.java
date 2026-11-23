@@ -13,13 +13,13 @@ import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Component;
 
 /**
- * The RabbitMQ side of the four events this service consumes. Only while it reads from RabbitMQ ({@code parkview.messaging.consumer=amqp}, the default); with
+ * The RabbitMQ side of the four events this service consumes. Only while it reads from RabbitMQ ({@code parkview.messaging.consumer=amqp}, the way back); with
  * {@code kafka} the {@link RuleKafkaListeners} hand the same events to the same handlers, so an event is handled once. An invalid payload is rejected to the dead-letter
  * queue; another failure propagates so the listener retries before dead-lettering.
  */
 @Component
 @RequiredArgsConstructor
-@ConditionalOnProperty(prefix = "parkview.messaging", name = "consumer", havingValue = "amqp", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "parkview.messaging", name = "consumer", havingValue = "amqp")
 public class AmqpRuleListeners {
 
     private final VehicleEventHandler vehicles;

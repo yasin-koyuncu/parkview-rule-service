@@ -76,12 +76,12 @@ public class RabbitConfig {
     }
 
     /**
-     * The queues of the events this service consumes and their bindings, only while it reads from RabbitMQ ({@code parkview.messaging.consumer=amqp}, the default). A service
+     * The queues of the events this service consumes and their bindings, only while it reads from RabbitMQ ({@code parkview.messaging.consumer=amqp}, the way back). A service
      * that reads from Kafka declares none: a queue that stays bound would collect every event unread (ADR 0021 of parkview-e2e). The exchanges above stay: this service
      * publishes to some of them.
      */
     @Configuration
-    @ConditionalOnProperty(prefix = "parkview.messaging", name = "consumer", havingValue = "amqp", matchIfMissing = true)
+    @ConditionalOnProperty(prefix = "parkview.messaging", name = "consumer", havingValue = "amqp")
     static class ConsumerTopology {
 
         @Bean

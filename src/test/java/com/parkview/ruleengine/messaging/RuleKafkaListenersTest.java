@@ -128,13 +128,13 @@ class RuleKafkaListenersTest {
     }
 
     @Test
-    void theKafkaListenersExistOnlyWhileTheServiceReadsFromKafkaAndTheAmqpOnesOnlyWhileItReadsFromRabbit() {
+    void kafkaIsTheDefaultAndTheAmqpListenersExistOnlyWhenRabbitMqIsAskedFor() {
         ConditionalOnProperty kafka = RuleKafkaListeners.class.getAnnotation(ConditionalOnProperty.class);
         ConditionalOnProperty amqp = AmqpRuleListeners.class.getAnnotation(ConditionalOnProperty.class);
 
         assertThat(kafka.havingValue()).isEqualTo("kafka");
-        assertThat(kafka.matchIfMissing()).isFalse();
+        assertThat(kafka.matchIfMissing()).as("Kafka is the default since phase 4").isTrue();
         assertThat(amqp.havingValue()).isEqualTo("amqp");
-        assertThat(amqp.matchIfMissing()).as("RabbitMQ stays the default until phase 4").isTrue();
+        assertThat(amqp.matchIfMissing()).as("RabbitMQ is the way back, never the default").isFalse();
     }
 }

@@ -49,6 +49,8 @@ import static org.awaitility.Awaitility.await;
 @SpringBootTest(properties = {
         "spring.datasource.password=unused-overridden-by-service-connection",
         "parkview.security.issuer=http://localhost:1/auth/v1",
+        "parkview.messaging.consumer=amqp",      // the way back to RabbitMQ (ADR 0021, phase 4): this flow runs against a RabbitMQ container
+        "parkview.outbox.transport=amqp",
         "parkview.rule-engine.expire-sweep-ms=300",
         "parkview.rule-engine.stale-sweep-ms=300",
         "parkview.rule-engine.stale-minutes=15"})
