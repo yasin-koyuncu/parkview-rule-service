@@ -3,6 +3,7 @@ package com.parkview.ruleengine.messaging;
 import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import org.springframework.boot.autoconfigure.amqp.RabbitProperties;
 import org.springframework.boot.autoconfigure.amqp.RabbitRetryTemplateCustomizer;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.converter.MessageConversionException;
@@ -22,6 +23,7 @@ import java.util.Map;
  * {@code spring.rabbitmq.listener.simple.retry.max-attempts} times.
  */
 @Configuration
+@ConditionalOnProperty(prefix = "parkview.messaging", name = "consumer", havingValue = "amqp", matchIfMissing = true)
 class ListenerRetryConfig {
 
     @Bean

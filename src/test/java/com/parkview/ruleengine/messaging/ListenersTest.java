@@ -46,7 +46,7 @@ class ListenersTest {
         VehicleDetectedEvent event = new VehicleDetectedEvent("cam", "zone", "ABC123",
                 List.of(List.of(0.0, 0.0), List.of(1.0, 0.0), List.of(1.0, 1.0)), null, null, 1.0, 0.9, 1L, "car", null);
 
-        new VehicleEventListener(detection).onVehicleDetected(event);
+        new VehicleEventHandler(detection).onVehicleDetected(event);
 
         verify(detection).process(event);
     }
@@ -56,7 +56,7 @@ class ListenersTest {
         FineSettlementService fines = mock(FineSettlementService.class);
         UUID fineId = UUID.randomUUID();
 
-        new PaymentEventListener(fines).onPaymentCompleted(
+        new PaymentEventHandler(fines).onPaymentCompleted(
                 new PaymentCompletedEvent("p-1", fineId, "FINE", null, BigDecimal.TEN, "SEK", 1L));
 
         verify(fines).markPaidOnline(fineId, "p-1", BigDecimal.TEN, "SEK");
@@ -186,8 +186,8 @@ class ListenersTest {
         ViolationResolver violations = mock(ViolationResolver.class);
         Instant ended = Instant.parse("2026-10-09T09:55:00Z");
 
-        new SessionEventListener(violations).onSessionEnded(new SessionEndedEvent("abc 123", "z1", ended, Instant.parse("2026-10-09T10:00:00Z")));
-        new SessionEventListener(violations).onSessionEnded(new SessionEndedEvent("ABC123", "z1", null, Instant.parse("2026-10-09T10:00:00Z")));
+        new SessionEventHandler(violations).onSessionEnded(new SessionEndedEvent("abc 123", "z1", ended, Instant.parse("2026-10-09T10:00:00Z")));
+        new SessionEventHandler(violations).onSessionEnded(new SessionEndedEvent("ABC123", "z1", null, Instant.parse("2026-10-09T10:00:00Z")));
 
         verify(violations).resolveEnded("ABC123", Place.of(null, "z1"), ended);
         verify(violations).resolveEnded("ABC123", Place.of(null, "z1"), Instant.parse("2026-10-09T10:00:00Z"));
@@ -224,7 +224,7 @@ class ListenersTest {
 
         ViolationResolver violations = mock(ViolationResolver.class);
 
-        new MapEventListener(cache, rules, violations).onMapUpdated(event);
+        new MapEventHandler(cache, rules, violations).onMapUpdated(event);
 
         verify(cache).evict("s1");
         verify(rules).evict(Place.of("s1", "z1"));
@@ -245,7 +245,7 @@ class ListenersTest {
 
         ViolationResolver violations = mock(ViolationResolver.class);
 
-        new MapEventListener(cache, rules, violations).onMapUpdated(event);
+        new MapEventHandler(cache, rules, violations).onMapUpdated(event);
 
         verify(cache).evict("s1");
         verify(rules).evict(Place.of("s1", null));
@@ -271,7 +271,7 @@ class ListenersTest {
         ViolationResolver violations = mock(ViolationResolver.class);
         Instant ended = Instant.parse("2026-10-09T09:55:00Z");
 
-        new SessionEventListener(violations).onSessionEnded(new SessionEndedEvent("ABC123", null, "s1", ended, null));
+        new SessionEventHandler(violations).onSessionEnded(new SessionEndedEvent("ABC123", null, "s1", ended, null));
 
         verify(violations).resolveEnded("ABC123", Place.of("s1", null), ended);
     }

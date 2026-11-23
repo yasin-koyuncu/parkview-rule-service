@@ -40,6 +40,11 @@
             <groupId>com.parkview.platform</groupId>
             <artifactId>parkview-outbox</artifactId>
         </dependency>
+        <dependency>
+            <!-- reading events from Kafka (parkview.messaging.consumer=kafka, ADR 0021 of parkview-e2e) -->
+            <groupId>com.parkview.platform</groupId>
+            <artifactId>parkview-messaging</artifactId>
+        </dependency>
         <!-- value types: Place, Money, Plate, Uuids, Enums, Strings and the plate/id constraints -->
         <dependency>
             <groupId>com.parkview.platform</groupId>

@@ -1,7 +1,7 @@
 package com.parkview.ruleengine.config;
 
 import com.parkview.ruleengine.messaging.DeadLetterConfig;
-import com.parkview.ruleengine.messaging.MapEventListener;
+import com.parkview.ruleengine.messaging.AmqpRuleListeners;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.Queue;
@@ -17,11 +17,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 class MapQueueTopologyTest {
 
     private final RabbitConfig config = new RabbitConfig();
+    private final RabbitConfig.ConsumerTopology topology = new RabbitConfig.ConsumerTopology();
 
     @Test
     void eachInstanceDeclaresItsOwnTemporaryQueue() {
-        Queue first = new RabbitConfig().mapUpdatedInstanceQueue();
-        Queue second = new RabbitConfig().mapUpdatedInstanceQueue();
+        Queue first = new RabbitConfig.ConsumerTopology().mapUpdatedInstanceQueue();
+        Queue second = new RabbitConfig.ConsumerTopology().mapUpdatedInstanceQueue();
 
         assertThat(first.getName()).startsWith("map.updated.rule-engine.instance-").isNotEqualTo(second.getName());
         assertThat(first.isExclusive()).isTrue();
@@ -32,9 +33,9 @@ class MapQueueTopologyTest {
 
     @Test
     void theInstanceQueueIsBoundToTheMappingExchangeWithTheEventKey() {
-        Queue queue = config.mapUpdatedInstanceQueue();
+        Queue queue = topology.mapUpdatedInstanceQueue();
 
-        Binding binding = config.mapUpdatedBinding(queue, config.mappingExchange());
+        Binding binding = topology.mapUpdatedBinding(queue, config.mappingExchange());
 
         assertThat(binding.getDestination()).isEqualTo(queue.getName());
         assertThat(binding.getExchange()).isEqualTo("parkview.mapping");
@@ -43,7 +44,7 @@ class MapQueueTopologyTest {
 
     @Test
     void theListenerReadsTheInstanceQueueNotTheSharedOne() throws Exception {
-        RabbitListener annotation = MapEventListener.class
+        RabbitListener annotation = AmqpRuleListeners.class
                 .getMethod("onMapUpdated", com.parkview.ruleengine.dto.event.MapUpdatedEvent.class)
                 .getAnnotation(RabbitListener.class);
 
@@ -52,7 +53,7 @@ class MapQueueTopologyTest {
 
     @Test
     void theSharedQueueIsNoLongerDeclared() {
-        assertThat(RabbitConfig.class.getDeclaredMethods())
+        assertThat(RabbitConfig.ConsumerTopology.class.getDeclaredMethods())
                 .extracting(java.lang.reflect.Method::getName)
                 .doesNotContain("mapUpdatedQueue");
     }
