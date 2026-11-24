@@ -21,7 +21,7 @@ controller/         violations, fines, evidence, disputes, permits; internal/ (f
 messaging/          handlers (vehicle, session, payment, map), AmqpRuleListeners, RuleKafkaListeners, RuleEvents, AmqpSupportConfig, DeadLetterConfig, ListenerRetryConfig
 client/ readmodel/  ports (ZoneDirectory, SpotDirectory, ...), client/jpa implementations, client/http vehicle lookup, @Immutable views
 domain/ repository/ entities (Violation, Fine, Dispute, FineEvidence, PlatePermit, FineAction), repositories
-security/           generated Permission, RuleAccessPolicy, ReadModelOperatorSites, ReadModelPlateDirectory
+security/           generated Permission, RuleAccessPolicy, ReadModelOperatorSites, ReadModelPlateDirectory, ReadModelPermissionDirectory (ADR 0022 D3)
 config/ dto/ mapper/   RuleEngineProperties, RabbitConfig (exchanges, consumer topology, keys); dto/event holds every event record
 ```
 

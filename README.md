@@ -566,6 +566,7 @@ the mapped ones. Liquibase never creates or alters these views and this service 
 | `sessions.v_sessions` | session-service | `id`, `plate`, `site_id`, `zone_id`, `started_at`, `ended_at`, `voided_at` (a voided session is not active, so it never causes an `OVERSTAY`) | `SessionView` |
 | `identity.v_user_plates` | authentication-service | `id`, `user_id`, `plate` | `PlateOwnerView` |
 | `identity.v_user_sites` | authentication-service | `user_id`, `site_id` | `UserSiteView` |
+| `identity.v_user_permissions` | authentication-service | `user_id`, `permission` | `UserPermissionView` (`ReadModelPermissionDirectory`, only with `parkview.permissions.source=directory`, ADR 0022 D3; cache `parkview.permissions.cache-ttl` 30 s) |
 | `ingestion.v_detections` | ingestion-service | `id`, `plate`, `corrected_plate`, `site_id`, `zone_id`, `image_path`, `confidence`, `review_status`, `at` (the snapshots that go into the evidence of a fine; rejected detections are left out) | `DetectionView` |
 
 **Camera views.** A spot is either a legacy spot (`view_id` null, polygon in `coordinates`) or drawn on a camera view

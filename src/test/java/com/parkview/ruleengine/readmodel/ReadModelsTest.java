@@ -41,9 +41,10 @@ class ReadModelsTest {
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16")
             .withInitScript("test-schema.sql");
 
-    private static final List<Class<?>> VIEWS = List.of(ZoneView.class, PlateOwnerView.class, UserSiteView.class, ParkingSpotView.class, ZoneRuleView.class, SessionView.class);
+    private static final List<Class<?>> VIEWS = List.of(ZoneView.class, PlateOwnerView.class, UserSiteView.class, UserPermissionView.class, ParkingSpotView.class, ZoneRuleView.class,
+            SessionView.class);
     private static final List<Class<?>> REPOSITORIES =
-            List.of(ZoneViewRepository.class, PlateOwnerViewRepository.class, UserSiteViewRepository.class, ParkingSpotViewRepository.class,
+            List.of(ZoneViewRepository.class, PlateOwnerViewRepository.class, UserSiteViewRepository.class, UserPermissionViewRepository.class, ParkingSpotViewRepository.class,
                     ZoneRuleViewRepository.class, SessionViewRepository.class);
 
     @Autowired
@@ -58,6 +59,8 @@ class ReadModelsTest {
     PlateOwnerViewRepository plates;
     @Autowired
     UserSiteViewRepository userSites;
+    @Autowired
+    UserPermissionViewRepository userPermissions;
     @Autowired
     ParkingSpotViewRepository spots;
     @Autowired
@@ -118,6 +121,17 @@ class ReadModelsTest {
         assertThat(columnCount("user_sites")).isGreaterThan(2);
         assertThat(userSites.findByUserId(user)).extracting(UserSiteView::getSiteId).containsExactlyInAnyOrder("s1", "s2");
         assertThat(userSites.findByUserId(UUID.randomUUID())).isEmpty();
+    }
+
+    @Test
+    void userPermissionsViewListsThePermissionsOfAUserThroughItsRoles() {
+        UUID user = UUID.randomUUID();
+        jdbc.update("insert into identity.access_role_permissions (role_code, permission) values ('viewer', 'session:read'), ('viewer', 'zone:read'), ('manager', 'zone:read'), ('manager', 'zone:write')");
+        jdbc.update("insert into identity.user_access_roles (user_id, role_code) values (?, 'viewer'), (?, 'manager')", user, user);
+
+        assertThat(userPermissions.findByUserId(user)).extracting(UserPermissionView::getPermission)
+                .as("a permission that two roles give is one row").containsExactlyInAnyOrder("session:read", "zone:read", "zone:write");
+        assertThat(userPermissions.findByUserId(UUID.randomUUID())).isEmpty();
     }
 
     @Test

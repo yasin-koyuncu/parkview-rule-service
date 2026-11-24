@@ -96,6 +96,16 @@ create table identity.user_plates (
   label      text,
   created_at timestamptz not null default now()
 );
+create table identity.user_access_roles (
+  user_id   uuid not null,
+  role_code text not null,
+  primary key (user_id, role_code)
+);
+create table identity.access_role_permissions (
+  role_code  text not null,
+  permission text not null,
+  primary key (role_code, permission)
+);
 create table identity.user_sites (
   user_id    uuid not null,
   site_id    text not null,
@@ -143,6 +153,10 @@ create view mapping.v_zone_rules as select * from mapping.zone_rules;
 create view mapping.v_parking_spots as select * from mapping.parking_spots;
 create view identity.v_user_plates as select id, user_id, plate from identity.user_plates;
 create view identity.v_user_sites as select user_id, site_id from identity.user_sites;
+create view identity.v_user_permissions as
+  select distinct ur.user_id, rp.permission
+    from identity.user_access_roles ur
+    join identity.access_role_permissions rp on rp.role_code = ur.role_code;
 create view sessions.v_sessions as select * from sessions.sessions;
 create view ingestion.v_detections as
 select id, plate, corrected_plate, site_id, zone_id, image_path, confidence, review_status, at
