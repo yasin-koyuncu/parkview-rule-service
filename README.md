@@ -589,8 +589,9 @@ published views, and sets the `search_path` of the test role to `rules, public` 
 | `DB_SCHEMA` | `rules` | no | the service's schema: Liquibase default and tracking schema (`spring.liquibase.default-schema` / `liquibase-schema`) and `hibernate.default_schema` |
 | `RABBIT_HOST` / `RABBIT_PORT` | `localhost` / `5672` | no | broker |
 | `RABBIT_USER` / `RABBIT_PASS` | `guest` / `guest` | no | broker credentials (set real ones outside local use) |
-| `SUPABASE_URL` | none | yes | JWT issuer is `${SUPABASE_URL}/auth/v1`, keys from its `.well-known/jwks.json` |
-| `SUPABASE_AUDIENCE` | `authenticated` | no | required `aud` claim |
+| `PARKVIEW_SECURITY_ISSUER` | - | yes | Expected JWT `iss`, set explicitly (never derived from another address); a missing value stops the start |
+| `PARKVIEW_SECURITY_JWKS_URI` | `<issuer>/.well-known/jwks.json` | no | Where the signing keys are fetched (Keycloak: `<issuer>/protocol/openid-connect/certs`) |
+| `PARKVIEW_SECURITY_AUDIENCE` | `parkview-api` | no | Required JWT `aud` |
 | `INTERNAL_API_KEY` | empty | no | the OWN key of this service: `/internal/**` (except retention) accepts it as `X-Internal-Api-Key` (`ROLE_INTERNAL`); callers hold it as `RULE_INTERNAL_API_KEY`. Not sent anywhere |
 | `INTERNAL_API_KEY_PREVIOUS` | empty | no | the key before a rotation, accepted as well while it is set (see "Rotating a key") |
 | `OPS_API_KEY` | empty | no | key of the operations endpoints: every non-health `/actuator/**` (prometheus) and `/internal/v1/retention/**` (`ROLE_OPS`). With none of the three keys set the internal API and actuator are disabled |
@@ -689,9 +690,9 @@ tracing on Boot adds `[traceId-spanId]` to every log line.
 
 ```bash
 export JAVA_HOME=<jdk 21>
-SPRING_PROFILES_ACTIVE=local SUPABASE_URL=https://<ref>.supabase.co mvn spring-boot:run   # needs Postgres and RabbitMQ
+SPRING_PROFILES_ACTIVE=local PARKVIEW_SECURITY_ISSUER=https://<issuer> mvn spring-boot:run   # needs Postgres and RabbitMQ
 mvn -B -ntp verify        # unit, web-layer and Testcontainers tests (needs a Docker daemon)
-docker build --secret id=maven_settings,src=$HOME/.m2/settings.xml -t rule-service . && docker run --rm -p 8081:8081 -e DB_URL=... -e DB_PASS=... -e SUPABASE_URL=... rule-service
+docker build --secret id=maven_settings,src=$HOME/.m2/settings.xml -t rule-service . && docker run --rm -p 8081:8081 -e DB_URL=... -e DB_PASS=... -e PARKVIEW_SECURITY_ISSUER=... rule-service
 ```
 
 The `local` profile only sets a database password and the internal, ops and lookup keys (`local-internal-key`) for development; the database needs the role `svc_rule` and the schema `rules` (created by the infrastructure, e.g. the e2e stack), and the schemas of the other services with their published views.

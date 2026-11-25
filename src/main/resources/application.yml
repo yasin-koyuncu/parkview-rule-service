@@ -68,7 +68,7 @@ parkview:
   docs:
     description: Parking violations, permits and fines
   security:
-    # issuer, audience and the keys come from the platform defaults (SUPABASE_URL, INTERNAL_API_KEY - callers hold it as RULE_INTERNAL_API_KEY -,
+    # issuer, audience and the keys come from the platform defaults (PARKVIEW_SECURITY_ISSUER, INTERNAL_API_KEY - callers hold it as RULE_INTERNAL_API_KEY -,
     # INTERNAL_API_KEY_PREVIOUS, OPS_API_KEY for the non-health actuator and the retention endpoints)
     # the public fine page (ADR 0020): the proof is the fine number and the plate in the request, checked by PublicFineService; the gateway lists it as PUBLIC too
     public-paths: ["/api/v1/public/fines/*/lookup"]
