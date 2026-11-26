@@ -282,7 +282,7 @@ create trigger fine_evidence_immutable
 
 -- changeset parkview:3-published-views runOnChange:true splitStatements:false
 -- The published read views (ADR 0010, section 4), re-created whenever this changeset changes. Only the columns that the readers use, nothing
--- else: ingestion-service reads them through PostgREST (role service_role). v_fines gives it the picture and the site of a fine to authorise a
+-- else: ingestion-service reads them (as svc_ingestion). v_fines gives it the picture and the site of a fine to authorise a
 -- request for the picture, v_fine_evidence the detections and pictures that are evidence of a fine, so that its retention keeps them.
 -- Nobody else reads this schema. The grants are skipped when the role does not exist, so that a missing role does not fail the changelog
 -- (the infrastructure creates the roles).
@@ -299,10 +299,10 @@ select detection_ids, image_paths
 
 do $$
 begin
-  if exists (select from pg_roles where rolname = 'service_role') then
-    execute format('grant usage on schema %I to service_role', current_schema());
-    execute format('grant select on %I.v_fines to service_role', current_schema());
-    execute format('grant select on %I.v_fine_evidence to service_role', current_schema());
+  if exists (select from pg_roles where rolname = 'svc_ingestion') then
+    execute format('grant usage on schema %I to svc_ingestion', current_schema());
+    execute format('grant select on %I.v_fines to svc_ingestion', current_schema());
+    execute format('grant select on %I.v_fine_evidence to svc_ingestion', current_schema());
   end if;
 end
 $$;

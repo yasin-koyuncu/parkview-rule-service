@@ -32,7 +32,7 @@ The schema `rules` and the role `svc_rule` (and the grants to the Supabase roles
 
 ## Published views
 
-`v_fines` and `v_fine_evidence` are read by ingestion through PostgREST as role `service_role` (grants guarded by role existence). A new reader column means a change of the view first. Never grant a base table.
+`v_fines` and `v_fine_evidence` are read by ingestion as role `svc_ingestion` (grants guarded by role existence). A new reader column means a change of the view first. Never grant a base table.
 
 ## Retention SQL
 

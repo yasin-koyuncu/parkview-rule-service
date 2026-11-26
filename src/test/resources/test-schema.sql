@@ -7,11 +7,11 @@ create schema if not exists sessions;
 create schema if not exists identity;
 create schema if not exists ingestion;
 alter role current_user set search_path = rules, public;
--- the PostgREST role of ingestion-service: the grants of the published views of rule-service (rules.v_fines, rules.v_fine_evidence) go to it
+-- the role of ingestion-service: the grants of the published views of rule-service (rules.v_fines, rules.v_fine_evidence) go to it
 do $$
 begin
-  if not exists (select from pg_roles where rolname = 'service_role') then
-    create role service_role nologin;
+  if not exists (select from pg_roles where rolname = 'svc_ingestion') then
+    create role svc_ingestion nologin;
   end if;
 end
 $$;

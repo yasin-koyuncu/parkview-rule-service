@@ -506,7 +506,7 @@ Read only: the catalogue views of other services (see "Data read from other serv
   Permit types are compared case-insensitively against `mapping.v_parking_spots.permit_type`.
 
 **Published views** (changeset `3-published-views`, `runOnChange:true`: dropped and created again whenever it changes, separate from the tables). They carry only the columns that the readers use, no
-free text and no personal data. The only reader is ingestion-service through PostgREST (role `service_role`, `Accept-Profile: rules`); the grants (`usage` on the schema, `select` on the two
+free text and no personal data. The only reader is ingestion-service (role `svc_ingestion`); the grants (`usage` on the schema, `select` on the two
 views) are made when that role exists and go to no other role:
 
 | View | Columns | Used for |
