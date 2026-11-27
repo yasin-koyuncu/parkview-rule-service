@@ -92,7 +92,7 @@ final class WebTestSupport {
         return token(role, permissions, plates, zones, subject);
     }
 
-    /** A staff token carrying the permissions of the role, whose subject is a user id (UUID) like Supabase issues it, for commands that record who acted. */
+    /** A staff token carrying the permissions of the role, whose subject is a user id (UUID) like the identity provider issues it, for commands that record who acted. */
     static RequestPostProcessor actor(String role, List<String> zones) {
         return actor(role, permissionsOf(role), zones);
     }

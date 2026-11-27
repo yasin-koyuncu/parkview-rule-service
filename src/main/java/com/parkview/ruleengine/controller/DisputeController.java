@@ -174,12 +174,12 @@ public class DisputeController {
         return DisputeMapper.toResponse(disputes.detailsOf(disputeService.decide(id, outcome, actor, request.note())));
     }
 
-    /** The token subject as a user id, or null when it is not a UUID (Supabase always issues one). */
+    /** The token subject as a user id, or null when it is not a UUID (the identity provider always issues one). */
     private static UUID uuidOf(AuthenticatedUser user) {
         return user.userUuid().orElse(null);
     }
 
-    /** The audit trail records who acted: the token subject, which Supabase always issues as a UUID. */
+    /** The audit trail records who acted: the token subject, which the identity provider always issues as a UUID. */
     private static AccessDeniedException notAUser() {
         return new AccessDeniedException("Token subject is not a user id");
     }

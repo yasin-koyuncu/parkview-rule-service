@@ -1,6 +1,6 @@
 -- liquibase formatted sql
 
--- The schema of rule-service (schema `rules`, role `svc_rule`, ADR 0010). The schema, the role and the grants to the Supabase roles are
+-- The schema of rule-service (schema `rules`, role `svc_rule`, ADR 0010). The schema and the role are
 -- created by the infrastructure, not here, names are unqualified and resolve through the default schema of Liquibase and the search_path
 -- of the role.
 --

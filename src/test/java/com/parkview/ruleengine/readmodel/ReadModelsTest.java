@@ -28,7 +28,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * The read models against a Postgres whose Supabase-style tables have more columns than are mapped
+ * The read models against a Postgres whose tables of other services have more columns than are mapped
  * (schema validation is on, see application.yml), and proof that they cannot be used to write.
  */
 @Testcontainers

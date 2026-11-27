@@ -14,7 +14,7 @@ last-verified: 2026-11-19
 
 # Baseline, views and read models
 
-The schema `rules` and the role `svc_rule` (and the grants to the Supabase roles) are created by the infrastructure, never by this repo (ADR 0010). Names are unqualified.
+The schema `rules` and the role `svc_rule` (and the grants to the roles of the readers) are created by the infrastructure, never by this repo (ADR 0010). Names are unqualified.
 
 ## Baseline
 

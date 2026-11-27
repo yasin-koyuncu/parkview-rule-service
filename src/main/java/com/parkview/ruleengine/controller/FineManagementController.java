@@ -75,7 +75,7 @@ public class FineManagementController {
                 fineQuery.disputeStatusOf(id), true);
     }
 
-    /** The audit trail records who acted: the token subject, which Supabase always issues as a UUID. */
+    /** The audit trail records who acted: the token subject, which the identity provider always issues as a UUID. */
     private static UUID actorOf(AuthenticatedUser user) {
         return user.userUuid().orElseThrow(() -> new AccessDeniedException("Token subject is not a user id"));
     }
